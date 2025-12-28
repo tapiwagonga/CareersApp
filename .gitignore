@@ -1,0 +1,22 @@
+# --- Dependencies ---
+node_modules/
+__pycache__/
+*.pyc
+venv/
+.env
+.DS_Store
+
+# --- Build Outputs ---
+dist/
+build/
+coverage/
+
+# --- IDE Settings ---
+.vscode/
+.idea/
+
+# --- Local Environment ---
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
