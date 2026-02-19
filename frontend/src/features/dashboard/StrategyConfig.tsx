@@ -2,146 +2,152 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { 
   Clock, 
-  Calendar, 
   Target, 
-  Zap, 
-  Coffee, 
-  GraduationCap,
   ArrowRight,
   ArrowLeft,
+  CheckCircle2,
+  Info,
+  BookOpen,
+  MonitorPlay,
+  Terminal,
+  TrendingUp,
   AlertTriangle
 } from "lucide-react";
-
-// --- TYPES ---
-export interface Preferences {
-  experienceLevel: "Junior" | "Mid" | "Senior"; 
-  learningStyle: "Visual" | "Text" | "Hands-on";
-  hoursPerWeek: number;
-  timeline: "Urgent" | "Standard" | "LongTerm"; // The new constraint
-}
+import { Preferences } from "../../types";
 
 interface Props {
   roleName: string;
-  gapCounts: { critical: number; total: number }; // Context from previous page
+  gapCounts: { critical: number; total: number };
   onSubmit: (prefs: Preferences) => void;
   onCancel: () => void;
 }
 
 export const StrategyConfig = ({ roleName, gapCounts, onSubmit, onCancel }: Props) => {
   const [prefs, setPrefs] = useState<Preferences>({
-    experienceLevel: "Mid",
+    experienceLevel: "Mid", // Hidden default, could be added to UI if needed
     learningStyle: "Visual",
-    hoursPerWeek: 10,
+    hoursPerWeek: 15,
     timeline: "Standard"
   });
 
-  const [intensity, setIntensity] = useState<"Relaxed" | "Balanced" | "Intense" | "Impossible">("Balanced");
+  const [pace, setPace] = useState<{ label: string; color: string; icon: React.ReactNode }>({ 
+    label: "", color: "", icon: null 
+  });
 
-  // Real-time "Feasibility Check"
+  // Real-time Feasibility Engine
   useEffect(() => {
-    // Simple logic: Less time + Less hours = Bad. Less time + More hours = Intense.
-    if (prefs.timeline === "Urgent") {
-        if (prefs.hoursPerWeek < 10) setIntensity("Impossible");
-        else if (prefs.hoursPerWeek > 20) setIntensity("Intense");
-        else setIntensity("Balanced");
-    } else if (prefs.timeline === "Standard") {
-        if (prefs.hoursPerWeek > 30) setIntensity("Intense");
-        else setIntensity("Balanced");
+    const hours = prefs.hoursPerWeek;
+    const isUrgent = prefs.timeline === "Urgent";
+
+    if (isUrgent && hours < 20) {
+        setPace({ 
+            label: "High Risk", 
+            color: "bg-red-50 text-red-700 border-red-100",
+            icon: <AlertTriangle size={18} />
+        });
+    } else if (isUrgent && hours >= 20) {
+        setPace({ 
+            label: "Bootcamp Intensity", 
+            color: "bg-orange-50 text-orange-700 border-orange-100",
+            icon: <ZapIcon /> 
+        });
+    } else if (hours > 30) {
+        setPace({ 
+            label: "Aggressive", 
+            color: "bg-blue-50 text-blue-700 border-blue-100",
+            icon: <TrendingUp size={18} />
+        });
     } else {
-        setIntensity("Relaxed");
+        setPace({ 
+            label: "Sustainable", 
+            color: "bg-green-50 text-green-700 border-green-100",
+            icon: <CheckCircle2 size={18} />
+        });
     }
   }, [prefs.hoursPerWeek, prefs.timeline]);
 
-  const getIntensityColor = () => {
-      switch(intensity) {
-          case "Relaxed": return "text-green-600 bg-green-50 border-green-200";
-          case "Balanced": return "text-blue-600 bg-blue-50 border-blue-200";
-          case "Intense": return "text-orange-600 bg-orange-50 border-orange-200";
-          case "Impossible": return "text-red-600 bg-red-50 border-red-200";
-      }
-  };
-
   return (
-    <div className="min-h-[85vh] flex items-center justify-center p-6 bg-white font-sans text-gray-900 pb-32">
+    <div className="min-h-[85vh] flex items-center justify-center p-4 md:p-8 bg-[#F8F9FB] font-sans text-gray-900 pb-32">
       
       <motion.div 
         initial={{ opacity: 0, y: 20 }} 
         animate={{ opacity: 1, y: 0 }} 
-        className="w-full max-w-6xl grid lg:grid-cols-12 gap-12"
+        className="w-full max-w-6xl bg-white rounded-[2rem] shadow-2xl shadow-gray-200/50 border border-white overflow-hidden grid lg:grid-cols-12"
       >
         
         {/* --- LEFT PANEL: CONTEXT --- */}
-        <div className="lg:col-span-4 space-y-6">
-           {/* Navigation Back */}
-           <button 
-              onClick={onCancel}
-              className="flex items-center gap-2 text-gray-400 hover:text-black font-bold text-xs uppercase tracking-widest transition-colors mb-4"
-           >
-              <ArrowLeft size={14} /> Back to Skills Audit
-           </button>
+        <div className="lg:col-span-4 bg-gray-50/80 p-8 flex flex-col justify-between border-r border-gray-100 relative">
+           {/* Decor */}
+           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
 
-           <div className="bg-gray-50 rounded-3xl p-8 border border-gray-100 sticky top-24">
-               <div className="flex items-center gap-2 mb-6 text-gray-400">
-                  <Target size={16} />
-                  <span className="text-xs font-bold tracking-widest uppercase">Step 3: Strategy</span>
-               </div>
-               
-               <h2 className="text-3xl font-serif font-medium text-gray-900 mb-6 leading-tight">
-                 Plan the <br /> <span className="italic text-gray-400">Attack.</span>
-               </h2>
-
-               {/* The Context "Card" */}
-               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-                  <div className="flex justify-between items-start border-b border-gray-100 pb-4">
-                      <div>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Target Role</p>
-                          <p className="font-bold text-gray-900">{roleName}</p>
-                      </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                      <div>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Gaps</p>
-                          <p className="text-2xl font-serif">{gapCounts.total}</p>
-                      </div>
-                      <div>
-                          <p className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Critical</p>
-                          <p className="text-2xl font-serif text-red-600">{gapCounts.critical}</p>
-                      </div>
-                  </div>
-               </div>
-               
-               {/* Feasibility Warning */}
-               <motion.div 
-                  layout
-                  className={`mt-6 p-4 rounded-xl border flex items-start gap-3 ${getIntensityColor()}`}
+           <div>
+               <button 
+                  onClick={onCancel}
+                  className="flex items-center gap-2 text-gray-400 hover:text-black font-bold text-xs uppercase tracking-wider transition-colors mb-8"
                >
-                   {intensity === "Impossible" ? <AlertTriangle size={20}/> : <Zap size={20} />}
-                   <div>
-                       <p className="text-xs font-bold uppercase tracking-wider mb-1">Pacing: {intensity}</p>
-                       <p className="text-xs opacity-90 leading-relaxed">
-                           {intensity === "Impossible" && "You cannot learn critical skills in 2 weeks with minimal hours. Increase hours or Deadline."}
-                           {intensity === "Intense" && "This is a bootcamp pace. Expect high workload."}
-                           {intensity === "Balanced" && "Sustainable pace for working professionals."}
-                           {intensity === "Relaxed" && "Casual learning pace."}
-                       </p>
-                   </div>
-               </motion.div>
+                  <ArrowLeft size={14} /> Back
+               </button>
+
+               <div className="mb-8">
+                   <h2 className="text-3xl font-serif font-bold text-gray-900 mb-2">
+                     Strategy <br /> Configuration
+                   </h2>
+                   <p className="text-gray-500 text-sm leading-relaxed">
+                     Define the parameters for your custom curriculum. We optimise for efficiency based on these inputs.
+                   </p>
+               </div>
+
+               {/* Summary Ticket */}
+               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
+                  <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Mission Objective</p>
+                      <p className="font-bold text-gray-900 leading-tight text-lg">{roleName}</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+                      <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Total Scope</p>
+                          <p className="text-2xl font-serif font-bold">{gapCounts.total} <span className="text-sm font-sans font-normal text-gray-400">Skills</span></p>
+                      </div>
+                      <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Critical Gaps</p>
+                          <p className="text-2xl font-serif font-bold text-indigo-600">{gapCounts.critical}</p>
+                      </div>
+                  </div>
+               </div>
            </div>
+
+           {/* Dynamic Feedback Widget */}
+           <motion.div 
+              layout
+              className={`mt-6 p-4 rounded-xl border flex flex-col gap-2 transition-colors duration-500 ${pace.color}`}
+           >
+               <div className="flex items-center gap-2 font-bold text-sm">
+                   {pace.icon}
+                   <span>Pace: {pace.label}</span>
+               </div>
+               <p className="text-xs opacity-90 leading-relaxed">
+                   {prefs.timeline === "Urgent" 
+                    ? "Focusing strictly on interview-critical topics." 
+                    : "Balancing theory, practice, and portfolio building."}
+               </p>
+           </motion.div>
         </div>
 
-        {/* --- RIGHT PANEL: CONFIGURATION --- */}
-        <div className="lg:col-span-8 bg-white space-y-12 lg:pl-10 lg:pt-4">
+        {/* --- RIGHT PANEL: INPUTS --- */}
+        <div className="lg:col-span-8 p-8 lg:p-12 space-y-10 bg-white">
             
-            {/* 1. TIMELINE (The New Feature) */}
-            <div className="space-y-4">
-               <label className="text-xs font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
-                  <Calendar size={16} /> What is your deadline?
-               </label>
+            {/* 1. TIMELINE / GOAL */}
+            <section className="space-y-4">
+               <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <Target size={20} className="text-gray-400"/> What is your primary goal?
+               </h3>
+               
                <div className="grid md:grid-cols-3 gap-4">
                   {[
-                    { id: "Urgent", label: "ASAP", sub: "Interview Prep", icon: <Zap size={20}/>, desc: "Crash courses & cheatsheets. < 1 Month." },
-                    { id: "Standard", label: "Steady", sub: "Up-skilling", icon: <Coffee size={20}/>, desc: "Solid fundamentals. 1-3 Months." },
-                    { id: "LongTerm", label: "Mastery", sub: "Career Switch", icon: <GraduationCap size={20}/>, desc: "Deep theory & projects. 6+ Months." }
+                    { id: "Urgent", label: "Interview Prep", sub: "ASAP", desc: "High-impact topics only." },
+                    { id: "Standard", label: "Upskill", sub: "Standard", desc: "Builds strong fundamentals." },
+                    { id: "LongTerm", label: "Career Pivot", sub: "Deep Dive", desc: "Complete mastery & projects." }
                   ].map((opt) => {
                      const isSelected = prefs.timeline === opt.id;
                      return (
@@ -149,75 +155,116 @@ export const StrategyConfig = ({ roleName, gapCounts, onSubmit, onCancel }: Prop
                            key={opt.id}
                            onClick={() => setPrefs({ ...prefs, timeline: opt.id as any })}
                            className={`
-                              relative p-5 rounded-2xl border text-left transition-all duration-300 group flex flex-col justify-between min-h-[140px]
+                              relative p-5 rounded-2xl border text-left transition-all duration-300 flex flex-col justify-between h-32 group
                               ${isSelected 
                                  ? "bg-black border-black text-white shadow-xl scale-[1.02]" 
                                  : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50"}
                            `}
                         >
-                           <div className="flex justify-between items-start w-full">
-                               <div className={`text-lg font-serif font-medium ${isSelected ? "text-white" : "text-gray-900"}`}>{opt.label}</div>
-                               <div className={isSelected ? "text-gray-400" : "text-gray-400"}>{opt.icon}</div>
+                           <div className="flex justify-between items-start">
+                               <span className="font-bold text-sm">{opt.label}</span>
+                               {isSelected && <CheckCircle2 size={16} className="text-green-400" />}
                            </div>
                            
                            <div>
-                               <div className={`text-xs font-bold uppercase tracking-wider mb-1 ${isSelected ? "text-gray-400" : "text-blue-600"}`}>{opt.sub}</div>
-                               <div className={`text-[10px] leading-relaxed ${isSelected ? "text-gray-500" : "text-gray-500"}`}>{opt.desc}</div>
+                               <div className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isSelected ? "text-gray-400" : "text-indigo-600"}`}>
+                                   {opt.sub}
+                               </div>
+                               <p className={`text-xs leading-tight ${isSelected ? "text-gray-400" : "text-gray-500"}`}>
+                                   {opt.desc}
+                               </p>
                            </div>
                         </button>
                      )
                   })}
                </div>
-            </div>
+            </section>
 
-            <div className="w-full h-px bg-gray-100" />
+            <div className="h-px w-full bg-gray-100" />
 
-            {/* 2. HOURS (Context Aware) */}
-            <div className="space-y-6">
+            {/* 2. CUSTOM SLIDER */}
+            <section className="space-y-6">
                <div className="flex justify-between items-end">
-                  <label className="text-xs font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
-                     <Clock size={16} /> Availability
-                  </label>
-                  <div className="font-serif text-2xl font-medium">
-                     {prefs.hoursPerWeek} <span className="text-sm font-sans text-gray-400 font-normal">hours / week</span>
+                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                     <Clock size={20} className="text-gray-400"/> Weekly Availability
+                  </h3>
+                  <div className="font-bold text-3xl font-serif">
+                     {prefs.hoursPerWeek} <span className="text-sm font-sans text-gray-400 font-medium">hrs/week</span>
                   </div>
                </div>
                
                <div className="relative h-12 flex items-center select-none group">
-                  <div className="absolute inset-0 top-1/2 -translate-y-1/2 h-2 bg-gray-100 rounded-full w-full overflow-hidden">
-                     <motion.div 
-                        className={`h-full rounded-full ${intensity === "Impossible" ? "bg-red-500" : "bg-black"}`}
-                        style={{ width: `${(prefs.hoursPerWeek / 40) * 100}%` }}
-                     />
+                  {/* Track */}
+                  <div className="absolute inset-0 h-4 bg-gray-100 rounded-full overflow-hidden">
+                      <motion.div 
+                        className="h-full bg-black"
+                        animate={{ width: `${(prefs.hoursPerWeek / 60) * 100}%` }}
+                      />
                   </div>
+                  
+                  {/* Invisible Input for Accessibility */}
                   <input 
-                     type="range" min="2" max="40" step="2"
+                     type="range" min="5" max="60" step="5"
                      value={prefs.hoursPerWeek}
                      onChange={(e) => setPrefs({ ...prefs, hoursPerWeek: parseInt(e.target.value) })}
                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                   />
+
+                  {/* Custom Thumb */}
                   <motion.div 
-                     className="absolute top-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full shadow-lg border border-gray-200 flex items-center justify-center pointer-events-none z-10"
-                     style={{ left: `calc(${(prefs.hoursPerWeek / 40) * 100}% - 16px)` }}
+                     className="absolute w-8 h-8 bg-white border-2 border-black rounded-full shadow-lg z-10 pointer-events-none flex items-center justify-center top-1/2 -translate-y-1/2"
+                     animate={{ left: `calc(${(prefs.hoursPerWeek / 60) * 100}% - 16px)` }}
                   >
-                     <div className={`w-2 h-2 rounded-full ${intensity === "Impossible" ? "bg-red-500" : "bg-black"}`} />
+                      <div className="w-2 h-2 bg-black rounded-full" />
                   </motion.div>
                </div>
-               <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  <span>Weekend Warrior</span>
-                  <span>Full Time</span>
-               </div>
-            </div>
 
-            {/* ACTION */}
-            <div className="pt-8 flex justify-end">
+               <div className="flex justify-between text-xs font-bold text-gray-300 uppercase tracking-widest px-1">
+                  <span>Casual (5h)</span>
+                  <span>Part-Time (20h)</span>
+                  <span>Immersive (60h)</span>
+               </div>
+            </section>
+
+            <div className="h-px w-full bg-gray-100" />
+
+            {/* 3. LEARNING STYLE (Restored & Polished) */}
+            <section className="space-y-4">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <Info size={20} className="text-gray-400"/> Preferred Format
+                </h3>
+                <div className="grid grid-cols-3 gap-4">
+                    {[
+                        { id: "Visual", label: "Video", icon: <MonitorPlay size={20}/> },
+                        { id: "Reading", label: "Reading", icon: <BookOpen size={20}/> },
+                        { id: "Kinesthetic", label: "Projects", icon: <Terminal size={20}/> },
+                    ].map((style) => {
+                        const isSelected = prefs.learningStyle === style.id;
+                        return (
+                            <button
+                                key={style.id}
+                                onClick={() => setPrefs({...prefs, learningStyle: style.id as any})}
+                                className={`
+                                    flex flex-col items-center justify-center gap-2 py-4 rounded-xl border transition-all
+                                    ${isSelected ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"}
+                                `}
+                            >
+                                {style.icon}
+                                <span className="text-xs font-bold uppercase tracking-wider">{style.label}</span>
+                            </button>
+                        )
+                    })}
+                </div>
+            </section>
+
+            {/* ACTION FOOTER */}
+            <div className="pt-4 flex justify-end">
                <button 
                   onClick={() => onSubmit(prefs)}
-                  disabled={intensity === "Impossible"}
-                  className="bg-black hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-10 py-5 rounded-2xl font-bold text-sm tracking-widest uppercase flex items-center gap-4 transition-all shadow-xl hover:-translate-y-1"
+                  className="bg-black hover:bg-gray-800 text-white px-10 py-5 rounded-2xl font-bold text-base flex items-center gap-4 transition-all shadow-xl hover:-translate-y-1 active:translate-y-0 group"
                >
-                  Generate Blueprint
-                  <ArrowRight size={20} />
+                  Generate Roadmap
+                  <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                </button>
             </div>
 
@@ -226,3 +273,10 @@ export const StrategyConfig = ({ roleName, gapCounts, onSubmit, onCancel }: Prop
     </div>
   );
 };
+
+// Simple Zap Icon component for the "Bootcamp" state
+const ZapIcon = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+    </svg>
+);

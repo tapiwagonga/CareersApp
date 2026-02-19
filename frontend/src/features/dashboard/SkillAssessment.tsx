@@ -1,272 +1,528 @@
-import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { 
-  CheckCircle2, 
-  Search, 
-  SlidersHorizontal, 
+import React, { useState, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  CheckCircle2,
   ArrowRight,
   ArrowLeft,
+  Target,
+  Trophy,
   AlertCircle,
-  Sparkles,
+  HelpCircle,
   FileText,
-  PieChart
+  Quote,
+  Zap,
+  ShieldAlert,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+  TrendingUp,
+  Award
 } from "lucide-react";
 import { SkillData } from "../../types";
 
 interface Props {
-  roleName: string; // <--- NEW PROP for context
+  roleName: string;
   skillsList: SkillData[];
   scannedLevels: Record<string, number>;
   onSubmit: (skills: Record<string, number>) => void;
   onCancel: () => void;
 }
 
+const toBackendLevel = (uiVal: number) => {
+  if (uiVal <= 0) return 0;
+  if (uiVal <= 1) return 1;
+  if (uiVal <= 5) return 3;
+  if (uiVal <= 8) return 4;
+  return 5;
+};
+
+const mapBackendToUi = (backendVal: number) => {
+  if (backendVal <= 0) return 0;
+  if (backendVal === 1) return 1;
+  if (backendVal === 2 || backendVal === 3) return 5;
+  if (backendVal === 4) return 8;
+  return 10;
+};
+
 const LEVELS = [
-  { val: 1, label: "None", desc: "No practical experience", color: "bg-gray-100 text-gray-500" },
-  { val: 3, label: "Novice", desc: "Understands basics", color: "bg-orange-50 text-orange-700 border-orange-200" },
-  { val: 5, label: "Competent", desc: "Can work independently", color: "bg-blue-50 text-blue-700 border-blue-200" },
-  { val: 8, label: "Proficient", desc: "Deep knowledge & best practices", color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-  { val: 10, label: "Expert", desc: "Authority / Architect level", color: "bg-purple-50 text-purple-700 border-purple-200" },
+  { val: 0, label: "None", short: "0", desc: "No experience", color: "text-gray-400", bg: "bg-gray-50", ring: "ring-gray-200" },
+  { val: 1, label: "Novice", short: "Jr", desc: "Need guidance", color: "text-orange-500", bg: "bg-orange-50", ring: "ring-orange-200" },
+  { val: 5, label: "Competent", short: "Mid", desc: "Independent", color: "text-blue-500", bg: "bg-blue-50", ring: "ring-blue-200" },
+  { val: 8, label: "Proficient", short: "Sr", desc: "Complex solver", color: "text-indigo-500", bg: "bg-indigo-50", ring: "ring-indigo-200" },
+  { val: 10, label: "Expert", short: "Lead", desc: "Architect/Mentor", color: "text-purple-600", bg: "bg-purple-50", ring: "ring-purple-200" }
 ];
 
 export const SkillAssessment = ({ roleName, skillsList, scannedLevels, onSubmit, onCancel }: Props) => {
   const [userRatings, setUserRatings] = useState<Record<string, number>>({});
-  const [stats, setStats] = useState({ found: 0, total: 0, percentage: 0 });
+  const [showGuide, setShowGuide] = useState(false);
 
-  // 1. Auto-Calibration & Stats Logic
   useEffect(() => {
+    if (!Array.isArray(skillsList)) return;
+
     const initialRatings: Record<string, number> = {};
-    let foundCount = 0;
-    
     skillsList.forEach(item => {
       const skillName = item.skill;
-      let detectedLevel = 1;
+      let detectedUiLevel = 0;
 
-      // Fuzzy Match Logic
-      let matchKey = Object.keys(scannedLevels).find(
-          k => k.toLowerCase().includes(skillName.toLowerCase()) || 
-               skillName.toLowerCase().includes(k.toLowerCase())
+      const matchKey = Object.keys(scannedLevels).find(
+        k =>
+          k.toLowerCase().includes(skillName.toLowerCase()) ||
+          skillName.toLowerCase().includes(k.toLowerCase())
       );
-      
-      if (scannedLevels[skillName]) matchKey = skillName; // Exact match priority
 
-      if (matchKey && scannedLevels[matchKey] > 1) {
-        detectedLevel = scannedLevels[matchKey];
-        foundCount++;
+      if (matchKey && scannedLevels[matchKey] > 0) {
+        detectedUiLevel = mapBackendToUi(scannedLevels[matchKey]);
       }
 
-      initialRatings[skillName] = detectedLevel;
+      initialRatings[skillName] = detectedUiLevel;
     });
 
     setUserRatings(initialRatings);
-    setStats({
-        found: foundCount,
-        total: skillsList.length,
-        percentage: Math.round((foundCount / skillsList.length) * 100)
+  }, [skillsList, scannedLevels]);
+
+  const stats = useMemo(() => {
+    let currentScore = 0;
+    let maxScore = 0;
+    let criticalGaps = 0;
+
+    skillsList.forEach(s => {
+      const rating = userRatings[s.skill] || 0;
+      const weight = s.importance === "Critical" ? 2 : 1;
+
+      maxScore += 10 * weight;
+      currentScore += rating * weight;
+
+      if (s.importance === "Critical" && rating < 5) criticalGaps++;
     });
 
-  }, [skillsList, scannedLevels]);
+    const percentage = maxScore > 0 ? Math.round((currentScore / maxScore) * 100) : 0;
+    return { percentage, criticalGaps, totalSkills: skillsList.length };
+  }, [userRatings, skillsList]);
+
+  const buildBackendPayload = (ratings: Record<string, number>) => {
+    const out: Record<string, number> = {};
+    for (const [skill, val] of Object.entries(ratings)) out[skill] = toBackendLevel(val);
+    return out;
+  };
 
   const handleRate = (skill: string, val: number) => {
     setUserRatings(prev => ({ ...prev, [skill]: val }));
   };
 
-  const getLevelDetails = (rating: number) => {
-      return LEVELS.find(l => l.val >= rating) || LEVELS[0];
-  };
+  const criticalSkills = skillsList.filter(s => s.importance === "Critical");
+  const bonusSkills = skillsList.filter(s => s.importance !== "Critical");
 
-  if (!skillsList || skillsList.length === 0) return null;
+  const scoreMessage =
+    stats.percentage < 40
+      ? { text: "Significant gaps found. We build from the ground up.", icon: AlertCircle, color: "text-red-500" }
+      : stats.percentage < 75
+      ? { text: "Solid foundation. We bridge the critical gaps.", icon: TrendingUp, color: "text-yellow-500" }
+      : { text: "Nearly ready. We polish advanced topics.", icon: Award, color: "text-green-500" };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center p-6 md:p-12 font-sans text-gray-900 pb-40">
-      <div className="w-full max-w-5xl space-y-8">
-        
-        {/* --- NAVIGATION --- */}
-        <div>
-            <button 
-                onClick={onCancel}
-                className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-black mb-4 transition-colors"
-            >
-                <ArrowLeft size={14} /> Back to Upload
-            </button>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-indigo-50/20 font-sans text-gray-900 pb-24 lg:pb-0">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div
+          className="absolute top-0 right-0 w-[700px] h-[700px] bg-gradient-to-br from-blue-200/40 to-indigo-200/40 rounded-full blur-[140px] animate-pulse"
+          style={{ animationDuration: "8s" }}
+        />
+        <div
+          className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-gradient-to-tr from-purple-200/40 to-pink-200/40 rounded-full blur-[140px] animate-pulse"
+          style={{ animationDuration: "10s", animationDelay: "2s" }}
+        />
+        <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-blue-400/30 rounded-full animate-ping" style={{ animationDuration: "3s" }} />
+        <div className="absolute top-1/3 right-1/3 w-3 h-3 bg-indigo-400/30 rounded-full animate-ping" style={{ animationDuration: "4s", animationDelay: "1s" }} />
+      </div>
 
-        {/* --- THE EXECUTIVE SUMMARY (NEW) --- */}
-        <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-3xl p-8 border border-gray-200 shadow-sm relative overflow-hidden"
-        >
-            {/* Background Decor */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-50" />
-
-            <div className="relative z-10 flex flex-col md:flex-row gap-8 items-start md:items-center justify-between">
-                
-                {/* Text Summary */}
-                <div className="space-y-4 max-w-2xl">
-                    <div className="flex items-center gap-2 text-blue-600">
-                        <FileText size={18} />
-                        <span className="text-xs font-bold uppercase tracking-widest">CV Scan Report</span>
-                    </div>
-                    
-                    <h1 className="text-3xl font-serif font-medium text-gray-900 leading-tight">
-                        We analyzed your fit for <br/>
-                        <span className="text-gray-400 italic">{roleName}</span>
-                    </h1>
-
-                    <p className="text-gray-500 text-sm leading-relaxed">
-                        Based on your uploaded CV, we identified <strong>{stats.found} out of {stats.total}</strong> required technical skills. 
-                        {stats.percentage < 50 
-                            ? " There are significant gaps between your current profile and the role requirements."
-                            : " You have a strong baseline, but some specific tool matches are missing."
-                        }
-                        <br />
-                        <span className="text-black font-bold">Please verify our findings below.</span>
-                    </p>
-                </div>
-
-                {/* Stat Circle */}
-                <div className="flex items-center gap-6 bg-gray-50 p-6 rounded-2xl border border-gray-100">
-                    <div className="relative w-20 h-20 flex items-center justify-center">
-                        <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                            <path className="text-gray-200" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3"/>
-                            <motion.path 
-                                className={`${stats.percentage > 70 ? "text-green-500" : stats.percentage > 40 ? "text-blue-500" : "text-orange-500"}`}
-                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
-                                fill="none" 
-                                stroke="currentColor" 
-                                strokeWidth="3" 
-                                strokeDasharray={`${stats.percentage}, 100`}
-                                initial={{ strokeDasharray: "0, 100" }}
-                                animate={{ strokeDasharray: `${stats.percentage}, 100` }}
-                                transition={{ duration: 1.5, ease: "easeOut" }}
-                            />
-                        </svg>
-                        <div className="absolute font-bold text-lg">{stats.percentage}%</div>
-                    </div>
-                    <div>
-                        <div className="text-xs font-bold uppercase text-gray-400 tracking-wider mb-1">Match Rate</div>
-                        <div className="text-sm font-bold">{stats.found} Skills Found</div>
-                        <div className="text-xs text-gray-400">{stats.total - stats.found} Missing</div>
-                    </div>
-                </div>
+      <div className="max-w-7xl mx-auto px-4 md:px-8 py-6 relative z-10">
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-8">
+          <button onClick={onCancel} className="group flex items-center gap-2 text-gray-500 hover:text-black transition-all font-bold text-sm" type="button">
+            <div className="p-2.5 bg-white rounded-xl border border-gray-200 group-hover:border-black group-hover:shadow-md transition-all">
+              <ArrowLeft size={16} />
             </div>
+            <span className="hidden sm:inline">Back to Overview</span>
+          </button>
+
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-600 bg-white/80 backdrop-blur-md px-4 py-2 rounded-full border border-indigo-100 shadow-sm">
+            <Sparkles size={14} />
+            <span>Skill Calibration</span>
+          </div>
         </motion.div>
 
-        {/* --- AUDIT LIST --- */}
-        <div className="space-y-6">
-           <div className="flex items-center gap-2 text-gray-400 pl-2">
-                <SlidersHorizontal size={14} />
-                <span className="text-xs font-bold uppercase tracking-widest">Detailed Calibration</span>
-           </div>
+        <div className="grid lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+          <div className="lg:col-span-4 lg:sticky lg:top-8 space-y-6">
+            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-2xl shadow-indigo-200/20 border border-white/80 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-100/50 to-transparent rounded-full blur-2xl" />
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-1.5 bg-indigo-100 rounded-lg">
+                    <Target size={14} className="text-indigo-600" />
+                  </div>
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Target Role</span>
+                </div>
 
-           {skillsList.map((item, idx) => {
-              const currentRating = userRatings[item.skill] || 1;
-              const levelObj = getLevelDetails(currentRating);
-              
-              // Check scanning result
-              let initialScanLevel = 0;
-              const matchKey = Object.keys(scannedLevels).find(k => k.toLowerCase().includes(item.skill.toLowerCase()));
-              if (matchKey) initialScanLevel = scannedLevels[matchKey];
-              const isDetected = initialScanLevel > 1;
+                <h1 className="font-serif text-3xl font-bold leading-tight text-gray-900 mb-8">{roleName}</h1>
 
-              return (
-                 <motion.div 
-                    key={item.skill}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className={`group bg-white rounded-2xl border p-6 md:p-8 transition-all duration-300 ${
-                        isDetected ? "border-green-200 shadow-green-500/5" : "border-gray-200"
-                    } hover:shadow-xl hover:border-blue-300`}
-                 >
-                    <div className="grid md:grid-cols-2 gap-8 md:gap-12">
-                       
-                       {/* LEFT: THE REQUIREMENT */}
-                       <div className="space-y-4">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-3 mb-2">
-                                <h3 className="text-xl font-bold text-gray-900">{item.skill}</h3>
-                                {item.importance === "Critical" && (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-50 text-red-600 tracking-wider border border-red-100">
-                                        Critical
-                                    </span>
-                                )}
-                                {isDetected && (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-50 text-green-600 tracking-wider border border-green-100 flex items-center gap-1">
-                                        <CheckCircle2 size={10} /> Match
-                                    </span>
-                                )}
-                            </div>
-                            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">{item.category}</p>
-                          </div>
-                          
-                          {/* Evidence Block */}
-                          <div className="relative pl-4 border-l-2 border-gray-100 italic text-gray-600 text-sm">
-                             "{item.evidence}"
-                             <div className="text-[10px] text-gray-400 not-italic mt-1 font-bold uppercase tracking-wider">
-                                Context: {item.context}
-                             </div>
-                          </div>
-                       </div>
+                <div className="bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white rounded-2xl p-6 relative overflow-hidden group shadow-xl">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-full blur-3xl animate-pulse" />
+                  <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-blue-500/20 to-cyan-500/20 rounded-full blur-2xl animate-pulse" style={{ animationDelay: "1s" }} />
 
-                       {/* RIGHT: THE CALIBRATION */}
-                       <div className="flex flex-col justify-center">
-                          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-                              
-                              <div className="flex justify-between items-center mb-6">
-                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                                    <SlidersHorizontal size={12} /> Your Level
-                                 </label>
-                                 <div className={`text-xs font-bold px-3 py-1.5 rounded-lg border ${levelObj.color}`}>
-                                    {levelObj.label} ({currentRating}/10)
-                                 </div>
-                              </div>
+                  <div className="relative z-10">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                          Match Score
+                        </span>
+                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 200, delay: 0.2 }} className="mt-2">
+                          <span
+                            className={`text-6xl font-serif font-bold ${
+                              stats.percentage > 70 ? "text-green-400" : stats.percentage > 40 ? "text-yellow-400" : "text-red-400"
+                            }`}
+                          >
+                            {stats.percentage}
+                          </span>
+                          <span className="text-2xl text-gray-400 font-serif">%</span>
+                        </motion.div>
+                      </div>
 
-                              <div className="relative h-12 flex items-center px-2 select-none">
-                                 {/* Track */}
-                                 <div className="absolute inset-0 h-2 bg-gray-100 rounded-full top-1/2 -translate-y-1/2 w-full overflow-hidden">
-                                    <motion.div 
-                                        className="h-full bg-gray-900 rounded-full" 
-                                        initial={{ width: 0 }}
-                                        animate={{ width: `${(currentRating / 10) * 100}%` }}
-                                    />
-                                 </div>
-                                 <input 
-                                    type="range" min="1" max="10" step="1"
-                                    value={currentRating}
-                                    onChange={(e) => handleRate(item.skill, parseInt(e.target.value))}
-                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                                 />
-                                 <motion.div 
-                                    className="absolute w-8 h-8 bg-white border border-gray-200 rounded-full shadow-lg z-10 pointer-events-none top-1/2 -translate-y-1/2 flex items-center justify-center text-[10px] font-bold text-gray-500"
-                                    animate={{ left: `calc(${(currentRating / 10) * 100}% - 16px)` }}
-                                 >
-                                    {currentRating}
-                                 </motion.div>
-                              </div>
-                              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold text-center mt-3">{levelObj.desc}</p>
-                          </div>
-                       </div>
+                      <div
+                        className={`p-3 rounded-xl ${
+                          stats.percentage > 70 ? "bg-green-500/20" : stats.percentage > 40 ? "bg-yellow-500/20" : "bg-red-500/20"
+                        }`}
+                      >
+                        <scoreMessage.icon className={scoreMessage.color} size={24} />
+                      </div>
                     </div>
-                 </motion.div>
-              );
-           })}
-        </div>
 
-        {/* --- FOOTER ACTION --- */}
-        <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-100 p-4 md:p-6 z-40">
-           <div className="max-w-5xl mx-auto flex justify-end items-center">
-              <button 
-                onClick={() => onSubmit(userRatings)}
-                className="bg-black hover:bg-gray-800 text-white px-8 py-4 rounded-xl font-bold text-sm tracking-wide flex items-center gap-3 shadow-2xl hover:-translate-y-1 transition-all"
+                    <div className="relative h-3 bg-white/10 rounded-full overflow-hidden backdrop-blur-sm mb-4">
+                      <motion.div
+                        className={`absolute inset-y-0 left-0 rounded-full ${
+                          stats.percentage > 70
+                            ? "bg-gradient-to-r from-green-400 to-emerald-500"
+                            : stats.percentage > 40
+                            ? "bg-gradient-to-r from-yellow-400 to-orange-500"
+                            : "bg-gradient-to-r from-red-400 to-rose-500"
+                        }`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${stats.percentage}%` }}
+                        transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
+                      />
+                      <motion.div
+                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                        animate={{ x: ["-100%", "200%"] }}
+                        transition={{ duration: 2, repeat: Infinity, repeatDelay: 1 }}
+                        style={{ width: "50%" }}
+                      />
+                    </div>
+
+                    <div className="flex items-start gap-2">
+                      <scoreMessage.icon className={scoreMessage.color} size={16} />
+                      <p className="text-xs text-gray-300 leading-relaxed font-medium">{scoreMessage.text}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-6">
+                  <motion.div whileHover={{ scale: 1.05 }} className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-100 relative overflow-hidden group cursor-pointer">
+                    <div className="absolute top-0 right-0 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <Trophy size={40} className="text-blue-500" />
+                    </div>
+                    <div className="relative z-10">
+                      <div className="text-blue-500 mb-2 p-2 bg-white rounded-lg w-fit shadow-sm">
+                        <Trophy size={18} />
+                      </div>
+                      <div className="text-3xl font-bold text-gray-900">{stats.totalSkills}</div>
+                      <div className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Total Skills</div>
+                    </div>
+                  </motion.div>
+
+                  <motion.div whileHover={{ scale: 1.05 }} className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl p-4 border border-red-100 relative overflow-hidden group cursor-pointer">
+                    <div className="absolute top-0 right-0 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <AlertCircle size={40} className="text-red-500" />
+                    </div>
+                    <div className="relative z-10">
+                      <div className="text-red-500 mb-2 p-2 bg-white rounded-lg w-fit shadow-sm">
+                        <AlertCircle size={18} />
+                      </div>
+                      <div className="text-3xl font-bold text-red-700">{stats.criticalGaps}</div>
+                      <div className="text-[10px] uppercase font-bold text-red-600 tracking-wider">Critical Gaps</div>
+                    </div>
+                  </motion.div>
+                </div>
+              </div>
+            </motion.div>
+
+            <div className="hidden lg:block">
+              <motion.button
+                onClick={() => onSubmit(buildBackendPayload(userRatings))}
+                disabled={stats.totalSkills === 0}
+                whileHover={{ scale: 1.02, y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full py-5 bg-gradient-to-r from-black via-gray-900 to-black text-white rounded-2xl font-bold text-lg shadow-2xl transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden group"
+                type="button"
               >
-                 Confirm & Plan Strategy <ArrowRight size={18} />
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                  animate={{ x: ["-100%", "200%"] }}
+                  transition={{ duration: 3, repeat: Infinity, repeatDelay: 1 }}
+                  style={{ width: "50%" }}
+                />
+                <span className="relative z-10 flex items-center gap-3">
+                  Generate My Roadmap
+                  <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                </span>
+              </motion.button>
+              <p className="text-center text-xs text-gray-500 mt-4 font-medium px-4">🎯 Custom path based on your skill profile</p>
+            </div>
+          </div>
+
+          <div className="lg:col-span-8 space-y-10">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-gray-200 pb-6">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-900 mb-2">Rate Your Skills</h2>
+                <p className="text-gray-500 text-sm">Honest assessment means a better roadmap.</p>
+              </div>
+
+              <motion.button
+                onClick={() => setShowGuide(!showGuide)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-full transition-all shadow-sm hover:shadow-md"
+                type="button"
+              >
+                <HelpCircle size={14} />
+                {showGuide ? "Hide" : "Show"} Guide
+              </motion.button>
+            </motion.div>
+
+            <AnimatePresence>
+              {showGuide && (
+                <motion.div initial={{ height: 0, opacity: 0, y: -10 }} animate={{ height: "auto", opacity: 1, y: 0 }} exit={{ height: 0, opacity: 0, y: -10 }} className="overflow-hidden">
+                  <div className="bg-gradient-to-br from-white via-indigo-50/30 to-white border border-indigo-100 rounded-3xl p-6 shadow-xl mb-8">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="p-2 bg-indigo-100 rounded-lg">
+                        <HelpCircle size={16} className="text-indigo-600" />
+                      </div>
+                      <h3 className="font-bold text-gray-900">Rating Guide</h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                      {LEVELS.map((l, idx) => (
+                        <motion.div
+                          key={l.val}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: idx * 0.1 }}
+                          className={`text-center p-4 rounded-xl border ${l.bg} border-gray-200 hover:shadow-md transition-all`}
+                        >
+                          <div className={`text-2xl font-bold mb-1 ${l.color}`}>{l.short}</div>
+                          <div className={`text-sm font-bold mb-1 ${l.color}`}>{l.label}</div>
+                          <div className="text-xs text-gray-500 leading-tight">{l.desc}</div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <section>
+              <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-3 mb-6">
+                <div className="p-3 bg-gradient-to-br from-red-100 to-rose-100 text-red-600 rounded-xl shadow-sm">
+                  <ShieldAlert size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-lg">Critical Requirements</h3>
+                  <p className="text-xs text-gray-500">These skills are essential for the role</p>
+                </div>
+                <span className="ml-auto text-sm font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full">{criticalSkills.length}</span>
+              </motion.div>
+
+              <div className="space-y-4">
+                {criticalSkills.map((skill, i) => (
+                  <SkillRow
+                    key={skill.skill}
+                    skill={skill}
+                    rating={userRatings[skill.skill] || 0}
+                    onRate={handleRate}
+                    scannedLevel={scannedLevels[skill.skill] || 0}
+                    index={i}
+                    isCritical={true}
+                  />
+                ))}
+              </div>
+            </section>
+
+            {bonusSkills.length > 0 && (
+              <section>
+                <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="flex items-center gap-3 mb-6 pt-10 border-t border-gray-200">
+                  <div className="p-3 bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600 rounded-xl shadow-sm">
+                    <Zap size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-lg">Bonus Skills</h3>
+                    <p className="text-xs text-gray-500">Nice-to-have competencies</p>
+                  </div>
+                  <span className="ml-auto text-sm font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full">{bonusSkills.length}</span>
+                </motion.div>
+
+                <div className="space-y-4">
+                  {bonusSkills.map((skill, i) => (
+                    <SkillRow
+                      key={skill.skill}
+                      skill={skill}
+                      rating={userRatings[skill.skill] || 0}
+                      onRate={handleRate}
+                      scannedLevel={scannedLevels[skill.skill] || 0}
+                      index={i}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <motion.div initial={{ y: 100 }} animate={{ y: 0 }} className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-200 p-4 lg:hidden z-50 shadow-2xl">
+        <motion.button
+          onClick={() => onSubmit(buildBackendPayload(userRatings))}
+          whileTap={{ scale: 0.97 }}
+          className="w-full py-4 bg-gradient-to-r from-black via-gray-900 to-black text-white rounded-xl font-bold text-lg flex items-center justify-center gap-3 shadow-lg transition-all relative overflow-hidden group"
+          type="button"
+        >
+          <motion.div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent" animate={{ x: ["-100%", "200%"] }} transition={{ duration: 3, repeat: Infinity }} style={{ width: "50%" }} />
+          <span className="relative z-10 flex items-center gap-3">
+            Generate Roadmap ({stats.percentage}%)
+            <ArrowRight size={20} className="group-active:translate-x-1 transition-transform" />
+          </span>
+        </motion.button>
+      </motion.div>
+    </div>
+  );
+};
+
+const SkillRow = ({
+  skill,
+  rating,
+  onRate,
+  scannedLevel,
+  index,
+  isCritical = false
+}: {
+  skill: SkillData;
+  rating: number;
+  onRate: (s: string, v: number) => void;
+  scannedLevel: number;
+  index: number;
+  isCritical?: boolean;
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const activeLevel = LEVELS.reduce((prev, curr) => (Math.abs(curr.val - rating) < Math.abs(prev.val - rating) ? curr : prev));
+  const isMatched = scannedLevel > 0;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05 }}
+      whileHover={{ y: -2 }}
+      className={`relative bg-white rounded-2xl p-5 border transition-all duration-300 shadow-sm hover:shadow-lg ${
+        isCritical ? "border-l-4 border-l-red-500 border-y-gray-100 border-r-gray-100" : "border-gray-100 hover:border-blue-200"
+      }`}
+    >
+      <div className="flex flex-col md:flex-row gap-6 items-start md:items-center">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 mb-2">
+            <h4 className="font-bold text-gray-900 text-lg">{skill.skill}</h4>
+            {isMatched && (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="flex items-center gap-1 text-[10px] font-bold uppercase bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 border border-green-200 px-2 py-1 rounded-full shadow-sm"
+              >
+                <CheckCircle2 size={10} /> Detected in CV
+              </motion.span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2 py-1 bg-gray-50 rounded-md">{skill.category}</span>
+
+            {skill.context && (
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors hover:underline"
+                type="button"
+              >
+                <FileText size={12} />
+                {isExpanded ? "Hide" : "View"} Context
+                {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               </button>
-           </div>
+            )}
+          </div>
         </div>
 
+        <div className="w-full md:w-auto shrink-0">
+          <div className="bg-gradient-to-br from-gray-50 to-gray-100 p-2 rounded-2xl flex relative shadow-inner">
+            <motion.div
+              className={`absolute top-2 bottom-2 rounded-xl shadow-lg z-0 ${activeLevel.bg} ${activeLevel.ring} ring-2`}
+              layoutId={`pill-${skill.skill}`}
+              initial={false}
+              animate={{
+                width: `calc(20% - 8px)`,
+                left: `calc(${LEVELS.findIndex(l => l.val === activeLevel.val) * 20}% + 4px)`
+              }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            />
+
+            {LEVELS.map(level => {
+              const isSelected = activeLevel.val === level.val;
+              return (
+                <motion.button
+                  key={level.val}
+                  onClick={() => onRate(skill.skill, level.val)}
+                  whileHover={{ scale: isSelected ? 1 : 1.1 }}
+                  whileTap={{ scale: 0.95 }}
+                  className={`relative z-10 w-14 md:w-16 h-12 rounded-xl flex flex-col items-center justify-center transition-all duration-200 ${
+                    isSelected ? `${level.color} font-bold` : "text-gray-400 hover:text-gray-600"
+                  }`}
+                  type="button"
+                >
+                  <motion.span animate={{ scale: isSelected ? 1.2 : 1 }} className="text-sm font-bold">
+                    {level.short}
+                  </motion.span>
+                </motion.button>
+              );
+            })}
+          </div>
+
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center mt-2">
+            <span className={`text-xs font-bold uppercase tracking-wider ${activeLevel.color}`}>{activeLevel.label}</span>
+          </motion.div>
+        </div>
       </div>
-    </div>
+
+      <AnimatePresence>
+        {isExpanded && skill.context && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3 }} className="overflow-hidden">
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <div className="bg-gradient-to-br from-indigo-50/80 via-blue-50/50 to-indigo-50/80 rounded-2xl p-5 border border-indigo-100 relative overflow-hidden">
+                <div className="absolute top-3 left-3 opacity-10">
+                  <Quote size={32} className="text-indigo-400" />
+                </div>
+
+                <p className="text-sm text-gray-700 leading-relaxed relative z-10 pl-6 border-l-3 border-indigo-300 italic">
+                  "{skill.context}"
+                </p>
+
+                <div className="absolute bottom-0 right-0 w-20 h-20 bg-gradient-to-tl from-indigo-100/50 to-transparent rounded-tl-full" />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 };

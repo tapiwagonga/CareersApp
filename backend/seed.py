@@ -1,165 +1,152 @@
-from sqlalchemy import insert, select, delete
-from .database import SessionLocal
-from . import models
+import sys
+import os
 
-# --- 1. Roles & Skills Logic (Refactored for clarity) ---
-def seed_roles(db, roles_data):
-    existing_roles = set(db.execute(select(models.Role.role_name)).scalars().all())
-    new_roles = [r for r in roles_data if r["role_name"] not in existing_roles]
+# Add the parent directory to sys.path so we can import from 'backend'
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from sqlalchemy.orm import Session
+from backend.database import SessionLocal, engine, Base
+from backend import models
+
+def seed_backend_developer_path(db: Session):
+    print("🌱 Seeding: Backend Software Developer Path...")
+
+    # 1. Define the Role
+    role = models.Role(
+        role_name="Backend Software Developer",
+        description="Builds and maintains server-side logic, databases, and APIs."
+    )
+    db.add(role)
+    db.commit()
+    db.refresh(role)
+
+    # 2. Define Skills (Nodes)
+    # We create variables so we can link them easily later
+    s_python = models.Skill(skill_name="Python Fundamentals", category="Language")
+    s_sql = models.Skill(skill_name="SQL & Database Design", category="Database")
+    s_api = models.Skill(skill_name="REST API Design", category="Backend")
+    s_docker = models.Skill(skill_name="Docker", category="DevOps")
+    s_k8s = models.Skill(skill_name="Kubernetes", category="DevOps")
+    s_cicd = models.Skill(skill_name="CI/CD Pipelines", category="DevOps")
+    s_system = models.Skill(skill_name="System Design", category="Architecture")
+
+    skills = [s_python, s_sql, s_api, s_docker, s_k8s, s_cicd, s_system]
+    db.add_all(skills)
+    db.commit()
+
+    # Refresh to get IDs
+    for s in skills: db.refresh(s)
+
+    # 3. Define Dependencies (The DAG Edges)
+    # Logic: Python -> API, API -> Docker, Docker -> Kubernetes
+    s_api.prerequisite_id = s_python.skill_id
+    s_sql.prerequisite_id = s_python.skill_id
+    s_docker.prerequisite_id = s_api.skill_id
+    s_k8s.prerequisite_id = s_docker.skill_id
+    s_cicd.prerequisite_id = s_docker.skill_id
+    s_system.prerequisite_id = s_api.skill_id
+
+    db.commit()
+
+    # 4. Link Skills to Role (Requirements)
+    # Target Level 1-5
+    requirements = [
+        models.RoleRequirement(role_id=role.role_id, skill_id=s_python.skill_id, target_level=4),
+        models.RoleRequirement(role_id=role.role_id, skill_id=s_sql.skill_id, target_level=3),
+        models.RoleRequirement(role_id=role.role_id, skill_id=s_api.skill_id, target_level=4),
+        models.RoleRequirement(role_id=role.role_id, skill_id=s_docker.skill_id, target_level=3),
+        models.RoleRequirement(role_id=role.role_id, skill_id=s_k8s.skill_id, target_level=2), # Junior doesn't need mastery
+        models.RoleRequirement(role_id=role.role_id, skill_id=s_cicd.skill_id, target_level=2),
+        models.RoleRequirement(role_id=role.role_id, skill_id=s_system.skill_id, target_level=2),
+    ]
+    db.add_all(requirements)
+    db.commit()
+
+    # 5. Add Resources (with Time & Authority)
+    # Tiers: 1=Official, 2=Industry Course, 3=Blog/Video
+    # Difficulty: 1=Read, 3=Analyze, 6=Build (Multiplies time)
     
-    if new_roles:
-        db.execute(insert(models.Role), new_roles)
-        db.commit()
-        print(f"Seeded {len(new_roles)} new roles.")
+    resources = [
+        # Python Resources
+        models.LearningResource(
+            skill_id=s_python.skill_id,
+            title="Python 3 Official Documentation",
+            url="https://docs.python.org/3/tutorial/index.html",
+            media_type="Documentation",
+            provider="Python Software Foundation",
+            duration_text="Ref",
+            est_minutes=60,
+            difficulty_level=2,
+            authority_tier=1
+        ),
+        models.LearningResource(
+            skill_id=s_python.skill_id,
+            title="Build a CLI Tool with Python",
+            url="https://realpython.com/python-cli-click-cookiecutter/",
+            media_type="Project",
+            provider="RealPython",
+            duration_text="2 hours",
+            est_minutes=120,
+            difficulty_level=5, # High difficulty = Active Learning
+            authority_tier=2
+        ),
 
-def seed_skills(db, skills_data):
-    existing_skills = set(db.execute(select(models.Skill.skill_name)).scalars().all())
-    new_skills = [s for s in skills_data if s["skill_name"] not in existing_skills]
+        # API Resources
+        models.LearningResource(
+            skill_id=s_api.skill_id,
+            title="FastAPI User Guide",
+            url="https://fastapi.tiangolo.com/tutorial/",
+            media_type="Documentation",
+            provider="FastAPI",
+            duration_text="3 hours",
+            est_minutes=180,
+            difficulty_level=3,
+            authority_tier=1
+        ),
 
-    if new_skills:
-        db.execute(insert(models.Skill), new_skills)
-        db.commit()
-        print(f"Seeded {len(new_skills)} new skills.")
-
-def seed_requirements(db, role_skill_map):
-    # Fetch IDs to map names -> integers
-    roles = db.execute(select(models.Role.role_name, models.Role.role_id)).all()
-    skills = db.execute(select(models.Skill.skill_name, models.Skill.skill_id)).all()
-    
-    role_map = {name: r_id for name, r_id in roles}
-    skill_map = {name: s_id for name, s_id in skills}
-
-    requirements_payload = []
-    for role_name, reqs in role_skill_map.items():
-        if role_name not in role_map: continue
-        
-        r_id = role_map[role_name]
-        for skill_name, level in reqs:
-            if skill_name in skill_map:
-                requirements_payload.append({
-                    "role_id": r_id,
-                    "skill_id": skill_map[skill_name],
-                    "target_level": level
-                })
-    
-    # Check for duplicates (if not resetting)
-    existing_reqs = db.execute(select(models.RoleRequirement.role_id, models.RoleRequirement.skill_id)).all()
-    existing_keys = {(r, s) for r, s in existing_reqs}
-    
-    final_payload = [
-        d for d in requirements_payload 
-        if (d["role_id"], d["skill_id"]) not in existing_keys
+        # Docker Resources
+        models.LearningResource(
+            skill_id=s_docker.skill_id,
+            title="Docker Curiosity Course",
+            url="https://www.youtube.com/watch?v=fqMOX6JJhGo",
+            media_type="Video",
+            provider="Traversy Media",
+            duration_text="1 hour",
+            est_minutes=60,
+            difficulty_level=1, # Passive Watch
+            authority_tier=3
+        ),
+        models.LearningResource(
+            skill_id=s_docker.skill_id,
+            title="Containerize a Python App",
+            url="https://docker-curriculum.com/",
+            media_type="Project",
+            provider="Docker Curriculum",
+            duration_text="2 hours",
+            est_minutes=120,
+            difficulty_level=6, # Build task
+            authority_tier=2
+        ),
     ]
 
-    if final_payload:
-        db.execute(insert(models.RoleRequirement), final_payload)
-        db.commit()
-        print(f"Seeded {len(final_payload)} role requirements.")
+    db.add_all(resources)
+    db.commit()
+    print("✅ Backend Developer Path Seeded Successfully!")
 
-# --- 2. New Resource Logic (Mission Intel) ---
-def seed_resources(db):
-    print("Seeding Intel Resources...")
-    skills = db.execute(select(models.Skill.skill_name, models.Skill.skill_id)).all()
-    skill_map = {name: s_id for name, s_id in skills}
+def main():
+    # Create Tables
+    models.Base.metadata.create_all(bind=engine)
     
-    # TIER 1 = Official Docs | TIER 2 = Industry Standard | TIER 3 = Community
-    resources_data = [
-        # Python
-        {"skill": "Python", "title": "Official Python Docs", "url": "https://docs.python.org/3/", "type": "Documentation", "provider": "Python Software Foundation", "duration": "Reference", "tier": 1},
-        {"skill": "Python", "title": "CS50's Introduction to Python", "url": "https://cs50.harvard.edu/python/", "type": "Course", "provider": "Harvard University", "duration": "10 Weeks", "tier": 2},
-        {"skill": "Python", "title": "Full Stack Python", "url": "https://www.fullstackpython.com/", "type": "Guide", "provider": "Matt Makai", "duration": "Self-paced", "tier": 3},
-        
-        # React
-        {"skill": "React", "title": "React.dev: The Official Guide", "url": "https://react.dev/learn", "type": "Documentation", "provider": "Meta", "duration": "Reference", "tier": 1},
-        {"skill": "React", "title": "Epic React", "url": "https://epicreact.dev/", "type": "Course", "provider": "Kent C. Dodds", "duration": "20 Hours", "tier": 2},
-        
-        # Docker
-        {"skill": "Docker", "title": "Docker Curriculum", "url": "https://docker-curriculum.com/", "type": "Interactive", "provider": "Prakhar Srivastav", "duration": "2 Hours", "tier": 3},
-        {"skill": "Docker", "title": "Official Docker Get Started", "url": "https://docs.docker.com/get-started/", "type": "Documentation", "provider": "Docker Inc", "duration": "1 Hour", "tier": 1},
-        
-        # FastAPI
-        {"skill": "FastAPI", "title": "FastAPI Documentation", "url": "https://fastapi.tiangolo.com/", "type": "Documentation", "provider": "Sebastián Ramírez", "duration": "Reference", "tier": 1},
-        
-        # PostgreSQL
-        {"skill": "PostgreSQL", "title": "PostgreSQL Tutorial", "url": "https://www.postgresqltutorial.com/", "type": "Guide", "provider": "PostgresTutorial", "duration": "Self-paced", "tier": 3},
-    ]
-    
-    inserts = []
-    for r in resources_data:
-        if r["skill"] in skill_map:
-            inserts.append({
-                "skill_id": skill_map[r["skill"]],
-                "title": r["title"],
-                "url": r["url"],
-                "media_type": r["type"],
-                "provider": r["provider"],
-                "duration": r["duration"],
-                "authority_tier": r["tier"],
-                "votes": 0
-            })
-    
-    # We clear old resources to ensure fresh "Intel" on every seed
-    db.execute(delete(models.LearningResource))
-    
-    if inserts:
-        db.execute(insert(models.LearningResource), inserts)
-        db.commit()
-        print(f"Seeded {len(inserts)} intel resources.")
-
-# --- 3. Main Execution Orchestrator ---
-def run_seed(reset_db=False):
     db = SessionLocal()
     try:
-        # DATA DEFINITIONS
-        roles_data = [
-            {"role_name": "Backend Developer", "description": "Server, API, and Database focus."},
-            {"role_name": "Frontend Developer", "description": "UI, UX, and Client-side focus."},
-            {"role_name": "Full Stack Developer", "description": "Handles both ends of the stack."},
-            {"role_name": "DevOps Engineer", "description": "CI/CD, Cloud, and Infrastructure."},
-        ]
-
-        skills_data = [
-            {"skill_name": "Python", "category": "Backend"},
-            {"skill_name": "FastAPI", "category": "Backend"},
-            {"skill_name": "PostgreSQL", "category": "Database"},
-            {"skill_name": "React", "category": "Frontend"},
-            {"skill_name": "TypeScript", "category": "Frontend"},
-            {"skill_name": "Docker", "category": "DevOps"},
-            {"skill_name": "AWS", "category": "Cloud"},
-            {"skill_name": "CI/CD", "category": "DevOps"},
-        ]
-
-        role_skill_map = {
-            "Backend Developer": [("Python", 4), ("FastAPI", 4), ("PostgreSQL", 3), ("Docker", 2)],
-            "Frontend Developer": [("React", 4), ("TypeScript", 4), ("CI/CD", 1)],
-            "Full Stack Developer": [("Python", 3), ("React", 3), ("PostgreSQL", 3), ("AWS", 2)],
-            "DevOps Engineer": [("Docker", 5), ("AWS", 4), ("CI/CD", 5), ("Python", 3)],
-        }
-
-        # RESET LOGIC
-        if reset_db:
-            print("--- Wiping Database ---")
-            # Order is critical for Foreign Keys!
-            db.execute(delete(models.LearningResource))
-            db.execute(delete(models.RoleRequirement))
-            db.execute(delete(models.Skill))
-            db.execute(delete(models.Role))
-            db.commit()
-
-        # SEEDING STEPS
-        seed_roles(db, roles_data)
-        seed_skills(db, skills_data)
-        seed_requirements(db, role_skill_map)
-        seed_resources(db)
+        # Optional: Clear existing data to avoid duplicates
+        # db.query(models.Role).delete()
+        # db.query(models.Skill).delete()
+        # db.commit()
         
-        print("--- Seeding Complete ---")
-
-    except Exception as e:
-        db.rollback()
-        print(f"Seeding Failed: {e}")
+        seed_backend_developer_path(db)
     finally:
         db.close()
 
 if __name__ == "__main__":
-    # Change to False if you want to keep existing data
-    run_seed(reset_db=False)
+    main()

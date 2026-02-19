@@ -14,7 +14,7 @@ const typeConfig = {
 export const ResourceCard = ({ resource }: { resource: Resource }) => {
   const [isSaved, setIsSaved] = useState(false);
   const isOfficial = resource.authority_tier === 1;
-  const config = typeConfig[resource.media_type] || typeConfig.Documentation;
+  const config = (typeConfig as any)[resource.media_type] || typeConfig.Documentation;
 
   return (
     <div className="group relative flex flex-col sm:flex-row gap-4 p-4 rounded-xl border border-slate-700/50 bg-slate-900/40 hover:bg-slate-800/60 hover:border-slate-600 transition-all duration-300 hover:-translate-y-1">
