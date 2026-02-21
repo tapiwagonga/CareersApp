@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import Avatar from "react-nice-avatar";
-import type { UserProfile, AnalysisResult } from "../../types";
+import { UserProfile, AnalysisResult } from "../../types";
 import { supabase } from "../../lib/supabase";
 import {
   Trophy,
@@ -16,10 +16,16 @@ import {
   LogOut,
   ArrowRight,
   Loader2,
-  Calendar,
-  AlertCircle
+  Calendar
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+
+type ResumeMeta = {
+  createdAt?: string;
+  phaseIndex: number;
+  taskKey?: string | null;
+  roleTitle?: string;
+};
 
 interface Props {
   user: UserProfile;
@@ -28,50 +34,8 @@ interface Props {
   onLogout: () => void;
   onEditAvatar: () => void;
   onUpdateProfile: (name: string, role: string, email: string) => void;
-  onLoadRoadmap: (data: AnalysisResult) => void;
+  onLoadRoadmap: (data: AnalysisResult, meta?: ResumeMeta) => void;
 }
-
-type SavedRoadmapRow = {
-  id: string;
-  user_id: string;
-  role_title?: string | null;
-  roadmap_data: any;
-  created_at: string;
-  updated_at?: string | null;
-  last_accessed_at?: string | null;
-  progress_pct?: number | null;
-};
-
-const isDemoUser = (userId?: string) => !userId || userId === "demo-user-id";
-
-const safeArray = <T,>(v: any): T[] => (Array.isArray(v) ? v : []);
-
-const formatUK = (iso?: string) => {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-};
-
-const computeProgressPct = (roadmapData: any) => {
-  const phases = safeArray<any>(roadmapData?.roadmap);
-  if (!phases.length) return 0;
-
-  let total = 0;
-  let done = 0;
-
-  phases.forEach((p: any) => {
-    const tasks = safeArray<any>(p?.tasks);
-    tasks.forEach((t: any) => {
-      total += 1;
-      const isDone = t?.status === "Completed" || t?.status === "Done" || Boolean(t?.is_completed);
-      if (isDone) done += 1;
-    });
-  });
-
-  if (total === 0) return 0;
-  return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
-};
 
 export const UserProfileView = ({
   user,
@@ -89,112 +53,53 @@ export const UserProfileView = ({
   const [email, setEmail] = useState(user.email || "");
   const [isSaved, setIsSaved] = useState(false);
 
-  const [savedRoadmaps, setSavedRoadmaps] = useState<SavedRoadmapRow[]>([]);
+  const [savedRoadmaps, setSavedRoadmaps] = useState<any[]>([]);
   const [loadingRoadmaps, setLoadingRoadmaps] = useState(false);
-  const [roadmapsError, setRoadmapsError] = useState<string | null>(null);
-
-  const userId = user?.id;
-  console.log(userId);
 
   useEffect(() => {
     setName(user.name || "");
-    setRole(user.role || "Career Explorer");
+    setRole(user.target_role || "Career Explorer");
     setEmail(user.email || "");
   }, [user]);
 
+  useEffect(() => {
+    const fetchRoadmaps = async () => {
+      if (!user?.id) return;
+
+      setLoadingRoadmaps(true);
+      try {
+        const { data, error } = await supabase
+          .from("saved_roadmaps")
+          .select(
+            "id, role_title, roadmap_data, created_at, last_accessed_at, progress_pct, current_xp, last_opened_phase_index, last_opened_task_key"
+          )
+          .eq("user_id", user.id)
+          .order("last_accessed_at", { ascending: false });
+
+        if (!error && data) setSavedRoadmaps(data);
+      } catch (err) {
+        console.error("fetchRoadmaps failed", err);
+      } finally {
+        setLoadingRoadmaps(false);
+      }
+    };
+
+    void fetchRoadmaps();
+  }, [user?.id]);
+
   const toggleSection = (section: string) => {
-    setActiveSection(prev => (prev === section ? null : section));
+    setActiveSection(activeSection === section ? null : section);
   };
 
   const handleSave = () => {
-    const cleanEmail = (email || "").trim();
-    const roleToSave = (role || "").trim() || "Career Explorer";
-    const fallbackName = cleanEmail.includes("@") ? cleanEmail.split("@")[0] : "Guest";
-    const nameToSave = (name || "").trim() || fallbackName;
+    const roleToSave = role.trim() || "Career Explorer";
+    const nameToSave = name.trim() || email.split("@")[0];
 
-    onUpdateProfile(nameToSave, roleToSave, cleanEmail);
+    onUpdateProfile(nameToSave, roleToSave, email);
 
     setIsSaved(true);
     window.setTimeout(() => setIsSaved(false), 2000);
   };
-
-  const fetchRoadmaps = useCallback(async () => {
-    if (isDemoUser(userId)) {
-      setSavedRoadmaps([]);
-      setRoadmapsError(null);
-      return;
-    }
-
-    setLoadingRoadmaps(true);
-    setRoadmapsError(null);
-
-    try {
-      const { data, error } = await supabase
-        .from("saved_roadmaps")
-        .select("id,user_id,role_title,roadmap_data,created_at,updated_at,last_accessed_at,progress_pct")
-        .eq("user_id", userId)
-        .order("updated_at", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Failed to load saved roadmaps", error);
-        setRoadmapsError("Could not load your saved roadmaps.");
-        setSavedRoadmaps([]);
-        return;
-      }
-
-      const rows = (data || []) as SavedRoadmapRow[];
-
-      const enriched = rows.map(r => {
-        const derivedProgress = computeProgressPct(r.roadmap_data);
-        const useProgress =
-          typeof r.progress_pct === "number" && r.progress_pct >= 0 ? Math.round(r.progress_pct) : derivedProgress;
-        return { ...r, progress_pct: useProgress };
-      });
-
-      setSavedRoadmaps(enriched);
-    } catch (e) {
-      console.error("Failed to load history", e);
-      setRoadmapsError("Could not load your saved roadmaps.");
-      setSavedRoadmaps([]);
-    } finally {
-      setLoadingRoadmaps(false);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    void fetchRoadmaps();
-  }, [fetchRoadmaps]);
-
-  const handleResume = useCallback(
-    async (row: SavedRoadmapRow) => {
-      const payload = row.roadmap_data as AnalysisResult;
-
-      onLoadRoadmap(payload);
-      onClose();
-
-      if (isDemoUser(userId)) return;
-
-      try {
-        await supabase
-          .from("saved_roadmaps")
-          .update({
-            last_accessed_at: new Date().toISOString(),
-            progress_pct: row.progress_pct ?? computeProgressPct(row.roadmap_data)
-          })
-          .eq("id", row.id)
-          .eq("user_id", userId);
-      } catch (e) {
-        console.error("Failed to update last_accessed_at", e);
-      }
-    },
-    [onClose, onLoadRoadmap, userId]
-  );
-
-  const roadmapCountLabel = useMemo(() => {
-    if (isDemoUser(userId)) return "Demo mode";
-    return `${savedRoadmaps.length} saved paths`;
-  }, [savedRoadmaps.length, userId]);
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-row justify-end items-stretch">
@@ -217,7 +122,6 @@ export const UserProfileView = ({
           <div className="flex items-center justify-between sticky top-0 bg-[#FAFAFA]/95 backdrop-blur-md py-2 z-20">
             <h2 className="font-serif font-bold text-2xl text-gray-900">My Profile</h2>
             <button
-              type="button"
               onClick={onClose}
               className="p-2 bg-white rounded-full shadow-sm border border-gray-100 hover:bg-gray-50 transition-colors"
             >
@@ -232,7 +136,6 @@ export const UserProfileView = ({
                 {user.avatar_config && <Avatar className="w-full h-full" {...user.avatar_config} />}
               </div>
               <button
-                type="button"
                 onClick={onEditAvatar}
                 className="absolute bottom-1 right-1 bg-black text-white p-2.5 rounded-full border-[3px] border-white shadow-md hover:scale-110 transition-transform cursor-pointer z-10"
               >
@@ -243,23 +146,32 @@ export const UserProfileView = ({
             <h1 className="text-2xl font-bold text-gray-900 mb-1 leading-tight truncate">
               {name && !name.includes("@") ? name : "Guest"}
             </h1>
-            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">{role || "Career Explorer"}</p>
+            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">
+              {role || "Career Explorer"}
+            </p>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <MiniStat
               icon={<Zap size={16} className="text-orange-500" />}
-              val={`Lvl ${Math.floor(((user.xp || 0) as number) / 1000) + 1}`}
+              val={`Lvl ${Math.floor((user.xp || 0) / 1000) + 1}`}
               label="Rank"
             />
-            <MiniStat icon={<Map size={16} className="text-blue-500" />} val={stats.skillsFound} label="Skills" />
-            <MiniStat icon={<Trophy size={16} className="text-yellow-500" />} val="0" label="Badges" />
+            <MiniStat
+              icon={<Map size={16} className="text-blue-500" />}
+              val={stats.skillsFound}
+              label="Skills"
+            />
+            <MiniStat
+              icon={<Trophy size={16} className="text-yellow-500" />}
+              val="0"
+              label="Badges"
+            />
           </div>
 
           <div className="space-y-3">
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden transition-all shadow-sm">
               <button
-                type="button"
                 onClick={() => toggleSection("roadmaps")}
                 className="w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors"
               >
@@ -268,8 +180,10 @@ export const UserProfileView = ({
                     <Map size={18} />
                   </div>
                   <div className="text-left">
-                    <span className="block font-bold text-gray-900">Saved Roadmaps</span>
-                    <span className="block text-xs text-gray-400">{roadmapCountLabel}</span>
+                    <span className="block font-bold text-gray-900">Active Journeys</span>
+                    <span className="block text-xs text-gray-400">
+                      {savedRoadmaps.length} saved paths
+                    </span>
                   </div>
                 </div>
                 <ChevronDown
@@ -279,7 +193,7 @@ export const UserProfileView = ({
               </button>
 
               <AnimatePresence>
-                {activeSection === "roadmaps" && (
+                {(activeSection === "roadmaps" || activeSection === null) && (
                   <motion.div
                     initial={{ height: 0 }}
                     animate={{ height: "auto" }}
@@ -287,42 +201,30 @@ export const UserProfileView = ({
                     className="overflow-hidden"
                   >
                     <div className="p-5 pt-0 space-y-3">
-                      {isDemoUser(userId) ? (
-                        <div className="text-center p-6 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
-                          <Map size={22} className="mx-auto text-gray-300 mb-2" />
-                          <p className="text-gray-500 text-xs font-semibold">Demo mode has no saved roadmaps.</p>
-                          <p className="text-gray-400 text-[10px]">Sign in to persist progress.</p>
-                        </div>
-                      ) : loadingRoadmaps ? (
+                      {loadingRoadmaps ? (
                         <div className="flex justify-center p-4">
                           <Loader2 className="animate-spin text-gray-400" />
                         </div>
-                      ) : roadmapsError ? (
-                        <div className="p-4 rounded-xl border border-rose-100 bg-rose-50 text-rose-700 text-sm flex items-start gap-2">
-                          <AlertCircle size={16} className="mt-0.5" />
-                          <div className="flex-1">
-                            <div className="font-bold">Could not load roadmaps</div>
-                            <div className="text-xs text-rose-600 mt-1">{roadmapsError}</div>
-                            <button
-                              type="button"
-                              onClick={() => void fetchRoadmaps()}
-                              className="mt-3 px-3 py-2 rounded-lg bg-white border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-50 transition-colors"
-                            >
-                              Retry
-                            </button>
-                          </div>
-                        </div>
                       ) : savedRoadmaps.length > 0 ? (
-                        savedRoadmaps.map(row => (
+                        savedRoadmaps.map(mapRow => (
                           <button
-                            type="button"
-                            key={row.id}
-                            onClick={() => void handleResume(row)}
+                            key={mapRow.id}
+                            onClick={() => {
+                              const meta: ResumeMeta = {
+                                createdAt: mapRow.created_at,
+                                phaseIndex: Number(mapRow.last_opened_phase_index || 1),
+                                taskKey: mapRow.last_opened_task_key || null,
+                                roleTitle: mapRow.role_title
+                              };
+
+                              onLoadRoadmap(mapRow.roadmap_data, meta);
+                              onClose();
+                            }}
                             className="w-full text-left p-4 rounded-xl border border-gray-100 hover:border-black hover:shadow-md transition-all group bg-gray-50/50"
                           >
                             <div className="flex justify-between items-center mb-1">
                               <span className="font-bold text-sm text-gray-900 truncate pr-2">
-                                {row.role_title || row.roadmap_data?.role_name || "Untitled Roadmap"}
+                                {mapRow.role_title}
                               </span>
                               <div className="flex items-center gap-1 text-black opacity-0 group-hover:opacity-100 transition-opacity">
                                 <span className="text-[10px] font-bold uppercase">Resume</span>
@@ -332,26 +234,31 @@ export const UserProfileView = ({
 
                             <div className="flex justify-between items-center text-xs text-gray-400 mb-2">
                               <span className="flex items-center gap-1">
-                                <Calendar size={10} /> {formatUK(row.updated_at || row.last_accessed_at || row.created_at)}
+                                <Calendar size={10} />
+                                {new Date(mapRow.created_at).toLocaleDateString("en-GB")}
                               </span>
-                              <span className="text-green-700 font-bold bg-green-50 px-2 py-0.5 rounded-full">
-                                {row.progress_pct || 0}% Done
+                              <span className="text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded-full">
+                                {mapRow.progress_pct || 0}% Done
                               </span>
                             </div>
 
                             <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-green-500 transition-all duration-500"
-                                style={{ width: `${row.progress_pct || 0}%` }}
+                                style={{ width: `${mapRow.progress_pct || 0}%` }}
                               />
+                            </div>
+
+                            <div className="mt-2 text-[10px] text-gray-400 font-medium uppercase tracking-widest">
+                              Resume phase {Number(mapRow.last_opened_phase_index || 1)}
                             </div>
                           </button>
                         ))
                       ) : (
                         <div className="text-center p-8 border-2 border-dashed border-gray-100 rounded-xl">
                           <Map size={24} className="mx-auto text-gray-300 mb-2" />
-                          <p className="text-gray-400 text-xs font-medium">No saved roadmaps yet.</p>
-                          <p className="text-gray-300 text-[10px]">Complete an analysis to create one.</p>
+                          <p className="text-gray-400 text-xs font-medium">No saved paths yet.</p>
+                          <p className="text-gray-300 text-[10px]">Start an analysis to begin.</p>
                         </div>
                       )}
                     </div>
@@ -362,7 +269,6 @@ export const UserProfileView = ({
 
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden transition-all shadow-sm">
               <button
-                type="button"
                 onClick={() => toggleSection("info")}
                 className="w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors"
               >
@@ -426,7 +332,6 @@ export const UserProfileView = ({
                       </div>
 
                       <button
-                        type="button"
                         onClick={handleSave}
                         className={`w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md ${
                           isSaved ? "bg-green-500 text-white" : "bg-black text-white hover:bg-gray-800"
@@ -447,7 +352,6 @@ export const UserProfileView = ({
             </div>
 
             <button
-              type="button"
               onClick={onLogout}
               className="w-full bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4 hover:bg-red-50 hover:border-red-100 group transition-all shadow-sm"
             >
