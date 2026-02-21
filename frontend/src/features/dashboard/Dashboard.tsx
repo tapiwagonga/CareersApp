@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactNiceAvatar, { genConfig } from "react-nice-avatar";
-
+import { createPortal } from "react-dom";
 import {
   Play,
   BookOpen,
@@ -33,7 +33,9 @@ import {
   Menu,
   X,
   Briefcase,
-  UserCheck
+  UserCheck,
+  ExternalLink,
+  FileText
 } from "lucide-react";
 
 import { AnalysisResult, RoadmapTask, RoadmapPhase } from "../../types";
@@ -53,9 +55,17 @@ type ResumeMeta = {
   roleTitle?: string;
 };
 
+type DocPreviewState = {
+  url: string;
+  title: string;
+  provider?: string;
+  reason?: "raw" | "replaced_search" | "search" | "missing";
+  altUrl?: string;
+};
+
 const safeArray = <T,>(v: any): T[] => (Array.isArray(v) ? v : []);
 
-const normaliseTaskType = (t: any) => (t?.type ?? "doc").toString();
+const normaliseTaskType = (t: any) => (t?.type ?? "doc").toString().trim().toLowerCase();
 
 const isTaskDone = (t: any) => t?.status === "Completed" || t?.status === "Done" || Boolean(t?.is_completed);
 
@@ -78,27 +88,233 @@ const TYPE_ICONS: Record<string, any> = {
   video: Play,
   audio: Mic,
   article: BookOpen,
-  doc: BookOpen,
+  doc: FileText,
+  documentation: FileText,
+  deep_dive: FileText,
+  interactive: Layout,
   course: Layout,
   project: Zap,
   boss_battle: ShieldAlert,
-  Watch: Play,
-  Read: BookOpen,
-  Build: Zap,
-  Practice: CheckCircle2
+  watch: Play,
+  read: BookOpen,
+  build: Zap,
+  practice: CheckCircle2
 };
+
 
 const TYPE_COLORS: Record<string, string> = {
   video: "bg-red-50 text-red-600 border-red-200",
   audio: "bg-purple-50 text-purple-600 border-purple-200",
   article: "bg-blue-50 text-blue-600 border-blue-200",
   doc: "bg-cyan-50 text-cyan-600 border-cyan-200",
+  documentation: "bg-cyan-50 text-cyan-600 border-cyan-200",
+  deep_dive: "bg-indigo-50 text-indigo-600 border-indigo-200",
+  interactive: "bg-violet-50 text-violet-700 border-violet-200",
   course: "bg-orange-50 text-orange-600 border-orange-200",
   project: "bg-emerald-50 text-emerald-600 border-emerald-200",
   boss_battle: "bg-gray-900 text-yellow-400 border-yellow-500",
-  Watch: "bg-red-50 text-red-600 border-red-200",
-  Read: "bg-blue-50 text-blue-600 border-blue-200",
-  Build: "bg-emerald-50 text-emerald-600 border-emerald-200"
+  watch: "bg-red-50 text-red-600 border-red-200",
+  read: "bg-blue-50 text-blue-600 border-blue-200",
+  build: "bg-emerald-50 text-emerald-600 border-emerald-200"
+};
+
+
+const isSearchUrl = (url?: string) => {
+  if (!url) return false;
+  const u = url.toLowerCase();
+  if (u.includes("google.com/search")) return true;
+  if (u.includes("bing.com/search")) return true;
+  if (u.includes("duckduckgo.com")) return true;
+  if (u.includes("/search?")) return true;
+  return false;
+};
+
+const guessOfficialDocUrl = (task: RoadmapTask, phase?: RoadmapPhase) => {
+  const t = `${task?.title ?? ""} ${(phase as any)?.focus_area ?? ""}`.toLowerCase();
+
+  if (t.includes("react")) return "https://react.dev/learn";
+  if (t.includes("typescript")) return "https://www.typescriptlang.org/docs/";
+  if (t.includes("javascript")) return "https://developer.mozilla.org/en-US/docs/Web/JavaScript";
+  if (t.includes("css")) return "https://developer.mozilla.org/en-US/docs/Web/CSS";
+  if (t.includes("html")) return "https://developer.mozilla.org/en-US/docs/Web/HTML";
+  if (t.includes("figma")) return "https://help.figma.com/hc/en-us";
+  if (t.includes("design system")) return "https://m3.material.io/";
+  if (t.includes("interaction design")) return "https://www.nngroup.com/topic/interaction-design/";
+  if (t.includes("prototyp")) return "https://www.nngroup.com/topic/prototyping/";
+  return null;
+};
+
+const isInAppDocType = (type: string) => {
+  const t = (type || "").toLowerCase().trim();
+  return (
+    t === "doc" ||
+    t === "documentation" ||
+    t === "article" ||
+    t === "deep_dive" ||
+    t === "interactive" ||
+    t === "read"
+  );
+};
+
+
+const DocPreviewModal = ({ state, onClose }: { state: DocPreviewState | null; onClose: () => void }) => {
+  const open = Boolean(state?.url);
+
+  const [mounted, setMounted] = useState(false);
+  const [iframeLikelyBlocked, setIframeLikelyBlocked] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    setIframeLikelyBlocked(false);
+  }, [state?.url]);
+
+  const headerHint = useMemo(() => {
+    if (!state) return "";
+    if (state.reason === "replaced_search") return "Official source";
+    if (state.reason === "search") return "Search results";
+    if (state.reason === "missing") return "Fallback";
+    return "";
+  }, [state]);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {open && state && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[9999]"
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 18, scale: 0.98 }}
+            transition={{ type: "spring", stiffness: 260, damping: 24 }}
+            className="absolute left-1/2 top-1/2 w-[96vw] h-[92vh] max-w-6xl -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-200 flex flex-col"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-white">
+              <div className="min-w-0">
+                <div className="text-sm font-black text-gray-900 truncate">{state.title}</div>
+                <div className="text-[10px] text-gray-500 font-medium uppercase tracking-widest truncate">
+                  {(state.provider || "Web").toString()}
+                  {headerHint ? " " + headerHint : ""}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {state.altUrl ? (
+                  <a
+                    href={state.altUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-800 text-xs font-bold"
+                  >
+                    <ExternalLink size={14} /> Search
+                  </a>
+                ) : null}
+
+                <a
+                  href={state.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-800 text-xs font-bold"
+                >
+                  <ExternalLink size={14} /> Open in new tab
+                </a>
+
+                <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-700">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="relative flex-1 bg-gray-50">
+              <iframe
+                ref={iframeRef}
+                title={state.title}
+                src={state.url}
+                className="w-full h-full"
+                onLoad={() => {
+                  const el = iframeRef.current;
+                  if (!el) return;
+
+                  try {
+                    const href = el.contentWindow?.location?.href || "";
+                    if (href === "about:blank") setIframeLikelyBlocked(true);
+                  } catch {
+                    setIframeLikelyBlocked(false);
+                  }
+
+                  window.setTimeout(() => {
+                    if (!el) return;
+                    try {
+                      const href2 = el.contentWindow?.location?.href || "";
+                      if (href2 === "about:blank") setIframeLikelyBlocked(true);
+                    } catch {
+                      setIframeLikelyBlocked(false);
+                    }
+                  }, 600);
+                }}
+              />
+
+              {iframeLikelyBlocked ? (
+                <div className="absolute inset-0 flex items-center justify-center p-6">
+                  <div className="bg-white border border-gray-200 rounded-2xl shadow-xl p-6 max-w-xl w-full text-center">
+                    <div className="mx-auto w-12 h-12 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-100 mb-3">
+                      <AlertCircle size={20} />
+                    </div>
+                    <div className="font-black text-gray-900 mb-1">This site blocks in app preview</div>
+                    <div className="text-sm text-gray-600 mb-5">
+                      Many official docs disable iframe embedding. Open it in a new tab for the full page.
+                    </div>
+                    <a
+                      href={state.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-black text-white text-sm font-bold"
+                    >
+                      <ExternalLink size={16} /> Open in new tab
+                    </a>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body
+  );
+};
+
+
+const resolveDocUrl = (task: RoadmapTask, phase?: RoadmapPhase): DocPreviewState => {
+  const raw = ((task as any)?.meta?.url || "").toString().trim();
+  const provider = ((task as any)?.meta?.provider || (task as any)?.meta?.platform || "").toString();
+
+  if (!raw) {
+    const fallback = guessOfficialDocUrl(task, phase);
+    if (fallback) return { url: fallback, title: task.title || "Document", provider, reason: "missing" };
+    return { url: "about:blank", title: task.title || "Document", provider, reason: "missing" };
+  }
+
+  if (isSearchUrl(raw)) {
+    const official = guessOfficialDocUrl(task, phase);
+    if (official) {
+      return { url: official, altUrl: raw, title: task.title || "Document", provider, reason: "replaced_search" };
+    }
+    return { url: raw, title: task.title || "Document", provider, reason: "search" };
+  }
+
+  return { url: raw, title: task.title || "Document", provider, reason: "raw" };
 };
 
 const VisualAid = ({ query }: { query: string }) => {
@@ -233,9 +449,9 @@ const RoadmapPath = ({
   const avatarConfig = useMemo(() => genConfig(), []);
 
   return (
-    <div className="relative py-10 px-4">
-      <div className="absolute left-[38px] top-0 bottom-0 w-1 bg-gray-100 rounded-full" />
-      <div className="space-y-8 relative z-10">
+    <div className="relative py-6 px-4">
+      <div className="absolute left-[34px] top-0 bottom-0 w-1 bg-gray-100 rounded-full" />
+      <div className="space-y-5 relative z-10">
         {phases.map((phase, index) => {
           const phaseNum = index + 1;
           const isActive = phaseNum === activePhaseId;
@@ -243,14 +459,14 @@ const RoadmapPath = ({
           const isLocked = phaseNum > activePhaseId;
 
           return (
-            <div key={(phase as any).week_number || index} className="relative pl-16 group">
+            <div key={(phase as any).week_number || index} className="relative pl-14 group">
               <button
                 type="button"
                 onClick={() => {
                   if (!isLocked) onPhaseSelect(phaseNum);
                 }}
                 disabled={isLocked}
-                className={`absolute left-5 -translate-x-1/2 w-10 h-10 rounded-full border-4 flex items-center justify-center transition-all duration-300 z-20 ${
+                className={`absolute left-5 -translate-x-1/2 w-9 h-9 rounded-full border-4 flex items-center justify-center transition-all duration-300 z-20 ${
                   isActive ? "bg-black border-black scale-110 shadow-xl" : isPast ? "bg-green-500 border-green-500" : "bg-white border-gray-200"
                 }`}
               >
@@ -268,10 +484,10 @@ const RoadmapPath = ({
               {isActive && (
                 <motion.div
                   layoutId="avatar-walker"
-                  className="absolute left-5 -translate-x-1/2 -top-12 z-30 filter drop-shadow-md"
+                  className="absolute left-5 -translate-x-1/2 -top-11 z-30 filter drop-shadow-md"
                   transition={{ type: "spring", stiffness: 300, damping: 25 }}
                 >
-                  <div className="w-12 h-12 rounded-full border-2 border-white bg-white overflow-hidden">
+                  <div className="w-11 h-11 rounded-full border-2 border-white bg-white overflow-hidden">
                     <ReactNiceAvatar style={{ width: "100%", height: "100%" }} {...avatarConfig} />
                   </div>
                 </motion.div>
@@ -292,7 +508,11 @@ const RoadmapPath = ({
                 }`}
               >
                 <div className="flex justify-between items-center mb-1">
-                  <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md ${isActive ? "bg-black text-white" : "bg-gray-100 text-gray-500"}`}>
+                  <span
+                    className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
+                      isActive ? "bg-black text-white" : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
                     {(phase as any).label?.split(" ")[0] || `Phase ${phaseNum}`}
                   </span>
                   {isPast && <Star size={12} className="text-yellow-400 fill-yellow-400" />}
@@ -381,7 +601,11 @@ const BossBattleCard = ({
       <div className="p-6 md:p-8">
         <div className="flex justify-between items-start mb-6">
           <div className="flex items-center gap-4">
-            <div className={`p-3 rounded-xl border ${isCompleted ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-indigo-500/10 border-indigo-500/20 text-indigo-400"}`}>
+            <div
+              className={`p-3 rounded-xl border ${
+                isCompleted ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-indigo-500/10 border-indigo-500/20 text-indigo-400"
+              }`}
+            >
               {isCompleted ? <CheckCircle2 size={24} /> : <ShieldAlert size={24} />}
             </div>
             <div>
@@ -479,15 +703,15 @@ const BossBattleCard = ({
 };
 
 const MissionCard = ({
-  task,
-  isCompleted,
-  onOpen,
-  onToggle
-}: {
-  task: RoadmapTask;
-  isCompleted: boolean;
-  onOpen: () => void;
-  onToggle: () => void;
+    task,
+    isCompleted,
+    onOpen,
+    onToggle
+  }: {
+    task: RoadmapTask;
+    isCompleted: boolean;
+    onOpen: () => void;
+    onToggle: () => void;
 }) => {
   const type = normaliseTaskType(task);
   const isProject = type === "boss_battle" || type === "project" || type === "Build";
@@ -509,6 +733,9 @@ const MissionCard = ({
   const Icon = TYPE_ICONS[type] || TYPE_ICONS.doc;
   const colorClass = TYPE_COLORS[type] || TYPE_COLORS.doc;
 
+  const actionLabel = isInAppDocType(type) ? "Read" : "Open";
+  const ActionIcon = isInAppDocType(type) ? BookOpen : Play;
+
   return (
     <motion.div
       layout
@@ -529,7 +756,7 @@ const MissionCard = ({
           <div className="flex justify-between items-start">
             <h4 className="font-bold text-gray-900 truncate pr-8">{task.title}</h4>
             <span className="text-xs font-bold text-yellow-500 flex items-center gap-1 shrink-0">
-              <Zap size={10} fill="currentColor" /> +{task.xp_reward || 50}
+              <Zap size={10} fill="currentColor" /> +{(task as any)?.xp_reward || 50}
             </span>
           </div>
 
@@ -537,13 +764,13 @@ const MissionCard = ({
 
           <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-gray-400">
             <span className="flex items-center gap-1">
-              <Clock size={12} /> {task.estimated_minutes || 30} min
+              <Clock size={12} /> {(task as any)?.estimated_minutes || 30} min
             </span>
             {(task as any)?.meta?.platform && (
               <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 border border-gray-200">{(task as any).meta.platform}</span>
             )}
             <span className="text-blue-600 font-bold flex items-center gap-1">
-              Open <Play size={10} />
+              {actionLabel} <ActionIcon size={10} />
             </span>
           </div>
         </div>
@@ -582,6 +809,7 @@ export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInt
   const [activeResource, setActiveResource] = useState<RoadmapTask | null>(null);
   const [quizSkill, setQuizSkill] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [docPreview, setDocPreview] = useState<DocPreviewState | null>(null);
 
   const resumeMeta = useMemo(() => ((data as any)?._resume as ResumeMeta | undefined) ?? undefined, [data]);
 
@@ -789,7 +1017,17 @@ export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInt
       if (!task) return;
 
       setActivePhaseIndex(phaseIdx + 1);
-      setActiveResource(task as any);
+
+      const type = normaliseTaskType(task);
+      if (isInAppDocType(type)) {
+        const state = resolveDocUrl(task as any, phase as any);
+        setDocPreview(state);
+        setActiveResource(null);
+      } else {
+        setActiveResource(task as any);
+        setDocPreview(null);
+      }
+      
 
       await persistResumePointer(phaseIdx + 1, taskKey);
       scheduleSave(localData, { phaseIndex: phaseIdx + 1, taskKey });
@@ -814,10 +1052,10 @@ export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInt
       });
 
       if (taskIdx >= 0) {
-        const taskKey = makeTaskKey(tasks[taskIdx], taskIdx);
-        void handleTaskToggleComplete(phaseIdx, taskKey, rating);
-        void persistResumePointer(activePhaseIndex, taskKey);
-        scheduleSave(localData, { phaseIndex: activePhaseIndex, taskKey });
+        const k = makeTaskKey(tasks[taskIdx], taskIdx);
+        void handleTaskToggleComplete(phaseIdx, k, rating);
+        void persistResumePointer(activePhaseIndex, k);
+        scheduleSave(localData, { phaseIndex: activePhaseIndex, taskKey: k });
       }
 
       setActiveResource(null);
@@ -855,15 +1093,15 @@ export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInt
 
       for (let t = startTaskIdx; t < tasks.length; t += 1) {
         if (!isTaskDone(tasks[t])) {
-          const taskKey = makeTaskKey(tasks[t], t);
-          return { phaseIdx: p, taskKey };
+          const key = makeTaskKey(tasks[t], t);
+          return { phaseIdx: p, taskKey: key };
         }
       }
 
       for (let t = 0; t < startTaskIdx; t += 1) {
         if (!isTaskDone(tasks[t])) {
-          const taskKey = makeTaskKey(tasks[t], t);
-          return { phaseIdx: p, taskKey };
+          const key = makeTaskKey(tasks[t], t);
+          return { phaseIdx: p, taskKey: key };
         }
       }
     }
@@ -940,7 +1178,16 @@ export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInt
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar bg-gray-50/30">
+      <div className="px-6 py-4 border-b border-gray-100 bg-white">
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] font-black uppercase tracking-widest text-gray-500">Roadmap</div>
+          <div className="text-[10px] font-medium text-gray-400">
+            Phase {activePhaseIndex} of {phases.length}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar bg-gray-50/30">
         <RoadmapPath
           phases={phases as any}
           activePhaseId={activePhaseIndex}
@@ -961,13 +1208,7 @@ export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInt
         >
           <Home size={14} /> Back to Home
         </button>
-        <button
-          type="button"
-          onClick={onReset}
-          className="w-full text-[10px] font-bold text-gray-400 hover:text-red-600 transition-colors uppercase tracking-widest py-2"
-        >
-          Archive and Start New
-        </button>
+        
       </div>
     </>
   );
@@ -980,11 +1221,18 @@ export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInt
     <div className="flex h-[calc(100vh-80px)] bg-[#F8F9FB] font-sans overflow-hidden relative">
       <CelebrationOverlay show={showCelebration} />
 
+      <DocPreviewModal
+        state={docPreview}
+        onClose={() => {
+          setDocPreview(null);
+        }}
+      />
+
       <ResourcePlayer task={activeResource} onClose={() => setActiveResource(null)} onComplete={finishResource} />
 
       <AnimatePresence>{quizSkill && <SkillQuiz skill={quizSkill} onClose={() => setQuizSkill(null)} onPass={handleQuizPass} />}</AnimatePresence>
 
-      <aside className="hidden md:flex w-[350px] h-full bg-white border-r border-gray-200 flex-col z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+      <aside className="hidden md:flex w-[420px] h-full min-h-0 bg-white border-r border-gray-200 flex-col z-20 shadow-[6px_0_24px_rgba(0,0,0,0.03)] shrink-0">
         <SidebarContent />
       </aside>
 
@@ -1011,7 +1259,7 @@ export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInt
                   <X size={20} />
                 </button>
               </div>
-              <div className="flex-1 flex flex-col h-full">
+              <div className="flex-1 min-h-0 flex flex-col h-full">
                 <SidebarContent />
               </div>
             </motion.div>
@@ -1054,7 +1302,11 @@ export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInt
               {(() => {
                 const status = getPhaseStatus((activePhase as any).end_date, (activePhase as any).is_completed);
                 return (
-                  <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2 border border-transparent ${status.bg} ${status.color} ${status.urgent ? "animate-pulse" : ""}`}>
+                  <div
+                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2 border border-transparent ${status.bg} ${status.color} ${
+                      status.urgent ? "animate-pulse" : ""
+                    }`}
+                  >
                     <AlertCircle size={12} /> {status.label}
                   </div>
                 );
@@ -1085,12 +1337,7 @@ export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInt
 
                 return (
                   <div key={taskKey} data-task-key={taskKey}>
-                    <MissionCard
-                      task={task}
-                      isCompleted={done}
-                      onOpen={() => void openTask(phaseIdx, taskKey)}
-                      onToggle={() => void handleTaskToggleComplete(phaseIdx, taskKey)}
-                    />
+                    <MissionCard task={task} isCompleted={done} onOpen={() => void openTask(phaseIdx, taskKey)} onToggle={() => void handleTaskToggleComplete(phaseIdx, taskKey)} />
                   </div>
                 );
               })}
