@@ -7,6 +7,7 @@ import random
 import re
 import time
 import uuid
+import pdfplumber
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -15,6 +16,7 @@ from dotenv import load_dotenv
 from duckduckgo_search import DDGS
 from google import genai
 from google.genai import types
+from supabase import create_client, Client
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -25,8 +27,11 @@ client = genai.Client(api_key=api_key) if api_key else None
 if not client:
     logger.critical("GEMINI_API_KEY missing, AI features will fail")
 
-MODEL_FAST = "gemini-2.5-flash"
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_KEY")
+supabase_client: Optional[Client] = create_client(supabase_url, supabase_key) if supabase_url and supabase_key else None
 
+MODEL_FAST = "gemini-2.5-flash"
 
 def generate_with_retry(model: str, prompt: str, config: types.GenerateContentConfig, retries: int = 3):
     for i in range(retries):
@@ -41,7 +46,6 @@ def generate_with_retry(model: str, prompt: str, config: types.GenerateContentCo
                 raise
             sleep_time = (2 ** (i + 1)) + random.uniform(0.5, 1.5)
             time.sleep(sleep_time)
-
 
 def clean_json_text(text: str) -> str:
     if not text:
@@ -63,7 +67,6 @@ def clean_json_text(text: str) -> str:
 
     return cleaned
 
-
 class ResourceCurator:
     BLOCKLIST_TOKENS = (
         "geeksforgeeks",
@@ -84,6 +87,27 @@ class ResourceCurator:
         "dev.to",
         "hashnode",
         "freecodecamp.org/news",
+        "csdn.net",
+        "zhihu.com",
+        "qiita.com",
+        "juejin.cn",
+        "cnblogs.com",
+        "bilibili.com"
+    )
+
+    BLOCK_IFRAME_DOMAINS = (
+        "github.com",
+        "figma.com",
+        "developer.mozilla.org",
+        "stackoverflow.com",
+        "medium.com",
+        "youtube.com",
+        "youtu.be",
+        "amazon.com",
+        "amazon.co.uk",
+        "oreilly.com",
+        "goodreads.com",
+        "manning.com"
     )
 
     TYPE_PREFER = {
@@ -125,6 +149,14 @@ class ResourceCurator:
             "developer.mozilla.org",
             "react.dev",
         ),
+        "book": (
+            "amazon.com",
+            "amazon.co.uk",
+            "oreilly.com",
+            "manning.com",
+            "nostarch.com",
+            "goodreads.com",
+        )
     }
 
     TYPE_KEY_NORMALISE = {
@@ -139,6 +171,9 @@ class ResourceCurator:
         "repository": "repo",
         "interactive": "interactive",
         "playground": "interactive",
+        "book": "book",
+        "textbook": "book",
+        "guide": "book"
     }
 
     @staticmethod
@@ -159,19 +194,31 @@ class ResourceCurator:
             return "YouTube"
         if "github.com" in u:
             return "GitHub"
+        if "amazon." in u:
+            return "Amazon"
         return "Web"
 
     @staticmethod
-    def _looks_low_quality(url: str) -> bool:
+    def _looks_low_quality(url: str, title: str = "", body: str = "") -> bool:
         u = (url or "").lower()
-        return any(tok in u for tok in ResourceCurator.BLOCKLIST_TOKENS)
+        if any(tok in u for tok in ResourceCurator.BLOCKLIST_TOKENS):
+            return True
+
+        combined_text = f"{title} {body}"
+        if re.search(r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7a3]', combined_text):
+            return True
+
+        if "youtube.com" in u and not any(valid in u for valid in ["watch?v=", "playlist?list=", "embed/", "shorts/"]):
+            return True
+
+        return False
 
     @staticmethod
     def _score_url(res_type: str, url: str, title: str = "") -> int:
         if not url:
             return 0
         u = url.lower()
-        if ResourceCurator._looks_low_quality(u):
+        if ResourceCurator._looks_low_quality(u, title):
             return 5
 
         score = 35
@@ -190,6 +237,9 @@ class ResourceCurator:
         if res_type == "doc" and ("docs" in dom or "developer" in dom):
             score += 10
 
+        if res_type == "book" and ("amazon." in dom or "oreilly" in dom):
+            score += 20
+
         if "utm_" in u:
             score -= 5
 
@@ -207,32 +257,37 @@ class ResourceCurator:
     def _ddg_text(query: str, max_results: int = 8) -> List[Dict[str, Any]]:
         time.sleep(random.uniform(0.7, 2.0))
         with DDGS() as ddgs:
-            return list(ddgs.text(query, max_results=max_results))
+            return list(ddgs.text(query, region="uk-en", max_results=max_results))
 
     @staticmethod
     @lru_cache(maxsize=900)
     def _ddg_videos(query: str, max_results: int = 8) -> List[Dict[str, Any]]:
         time.sleep(random.uniform(0.7, 2.0))
         with DDGS() as ddgs:
-            return list(ddgs.videos(query, max_results=max_results))
+            return list(ddgs.videos(query, region="uk-en", max_results=max_results))
 
     @staticmethod
     def _pick_best_candidate(res_type: str, query: str, title_hint: str) -> Optional[Dict[str, Any]]:
         try:
             candidates = []
+            safe_query = f"{query} english"
+
             if res_type == "video":
-                results = ResourceCurator._ddg_videos(query, 8)
+                results = ResourceCurator._ddg_videos(safe_query, 8)
                 for r in results:
                     url = (r.get("content") or "").strip()
-                    if not url or ResourceCurator._looks_low_quality(url):
+                    title = (r.get("title") or "").strip()
+                    if not url or ResourceCurator._looks_low_quality(url, title):
                         continue
                     score = ResourceCurator._score_url(res_type, url, title_hint)
                     candidates.append((score, url))
             else:
-                results = ResourceCurator._ddg_text(query, 8)
+                results = ResourceCurator._ddg_text(safe_query, 8)
                 for r in results:
                     url = (r.get("href") or "").strip()
-                    if not url or ResourceCurator._looks_low_quality(url):
+                    title = (r.get("title") or "").strip()
+                    body = (r.get("body") or "").strip()
+                    if not url or ResourceCurator._looks_low_quality(url, title, body):
                         continue
                     score = ResourceCurator._score_url(res_type, url, title_hint)
                     candidates.append((score, url))
@@ -292,51 +347,91 @@ class ResourceCurator:
     @staticmethod
     def _fallback_pack(skill: str) -> List[Dict[str, Any]]:
         s = (skill or "").strip()
-        google_query = f"https://www.google.com/search?q={s.replace(' ', '+')}"
+        google_query = f"https://www.google.com/search?q={s.replace(' ', '+')}+documentation+english"
+        book_query = f"https://www.amazon.co.uk/s?k={s.replace(' ', '+')}+programming+book"
         return [
             {
                 "type": "doc",
                 "title": f"{s} official documentation",
                 "description": "Start with the canonical reference so terminology and APIs are correct.",
                 "estimated_minutes": 45,
-                "meta": {"url": google_query, "platform": "Web", "provider": "Search", "quality_score": 50},
+                "meta": {"url": google_query, "platform": "Web", "provider": "Search", "quality_score": 50, "iframe_safe": False},
             },
             {
                 "type": "deep_dive",
                 "title": f"{s} engineering deep dive",
                 "description": "A conceptual explanation that focuses on why trade offs exist.",
                 "estimated_minutes": 35,
-                "meta": {"url": google_query, "platform": "Web", "provider": "Search", "quality_score": 45},
+                "meta": {"url": google_query, "platform": "Web", "provider": "Search", "quality_score": 45, "iframe_safe": False},
             },
             {
                 "type": "video",
                 "title": f"{s} conference talk",
                 "description": "A talk that frames the mental model and common pitfalls.",
                 "estimated_minutes": 40,
-                "meta": {"url": google_query, "platform": "Web", "provider": "Search", "quality_score": 40},
+                "meta": {"url": google_query, "platform": "Web", "provider": "Search", "quality_score": 40, "iframe_safe": False},
             },
             {
                 "type": "repo",
                 "title": f"{s} reference implementation repo",
                 "description": "A well structured repository you can read and clone.",
                 "estimated_minutes": 30,
-                "meta": {"url": google_query, "platform": "Web", "provider": "Search", "quality_score": 40},
+                "meta": {"url": google_query, "platform": "Web", "provider": "Search", "quality_score": 40, "iframe_safe": False},
             },
             {
                 "type": "interactive",
                 "title": f"{s} interactive practice",
                 "description": "Hands on practice to confirm you can apply the concept.",
                 "estimated_minutes": 30,
-                "meta": {"url": google_query, "platform": "Web", "provider": "Search", "quality_score": 40},
+                "meta": {"url": google_query, "platform": "Web", "provider": "Search", "quality_score": 40, "iframe_safe": False},
             },
+            {
+                "type": "book",
+                "title": f"{s} authoritative book",
+                "description": "A comprehensive guide for deep foundational understanding.",
+                "estimated_minutes": 120,
+                "meta": {"url": book_query, "platform": "Amazon", "provider": "Search", "quality_score": 40, "iframe_safe": False},
+            }
         ]
 
     @staticmethod
-    def curate_resources(skill: str, level: str, style: str) -> List[Dict[str, Any]]:
-        if not client:
+    def curate_from_db(skill: str, target_count: int = 10) -> List[Dict[str, Any]]:
+        clean_skill = skill.strip().lower()
+        if not supabase_client:
             return []
 
-        target_count = 10
+        try:
+            response = supabase_client.table("resources").select("*").eq("skill_name", clean_skill).order("quality_score", desc=True).execute()
+            if not response.data:
+                return []
+                
+            db_items = []
+            for row in response.data:
+                db_items.append({
+                    "id": str(row.get("id")),
+                    "type": row.get("type", "doc"),
+                    "title": row.get("title", ""),
+                    "description": row.get("description", ""),
+                    "estimated_minutes": row.get("estimated_minutes", 30),
+                    "meta": {
+                        "url": row.get("url", ""),
+                        "platform": row.get("platform", "Web"),
+                        "provider": row.get("provider", "Web"),
+                        "quality_score": row.get("quality_score", 50),
+                        "iframe_safe": row.get("iframe_safe", False)
+                    }
+                })
+            return ResourceCurator._ensure_diversity(db_items, target_count)
+        except Exception as e:
+            logger.error(f"Database fetch failed for {skill}: {e}")
+            return []
+
+    @staticmethod
+    def curate_from_ai(skill: str, level: str, style: str, target_count: int = 10) -> List[Dict[str, Any]]:
+        clean_skill = skill.strip().lower()
+
+        if not client:
+            return []
 
         prompt = f"""
         ACT AS: Senior staff engineer.
@@ -346,15 +441,16 @@ class ResourceCurator:
         1 Avoid low quality tutorial spam sites and generic blogs.
         2 Prefer official documentation, respected engineering blogs, reputable conference talks, and strong repositories.
         3 Ensure diversity across providers and formats.
-        4 Return a balanced mix with at least 3 docs, 3 deep dives, 2 videos, 1 repo, 1 interactive.
+        4 Return a balanced mix with at least 3 docs, 2 deep dives, 2 videos, 1 repo, 1 interactive, 1 book.
+        5 All returned resources and search queries must be strictly in English.
 
         OUTPUT JSON ARRAY
         [
           {{
-            "type": "Doc" | "Deep Dive" | "Video" | "Repo" | "Interactive",
+            "type": "Doc" | "Deep Dive" | "Video" | "Repo" | "Interactive" | "Book",
             "title": "Specific title",
             "description": "One sentence on why it is good",
-            "search_query": "Precise query that finds the canonical source",
+            "search_query": "Precise English query that finds the canonical source",
             "estimated_minutes": 15 to 180
           }}
         ]
@@ -403,6 +499,7 @@ class ResourceCurator:
                 platform = ResourceCurator._platform(url)
                 provider = candidate["provider"] or platform
                 qscore = candidate["quality_score"]
+                iframe_safe = not any(tok in url.lower() for tok in ResourceCurator.BLOCK_IFRAME_DOMAINS)
 
                 final_resources.append(
                     {
@@ -410,24 +507,44 @@ class ResourceCurator:
                         "title": title,
                         "description": item["description"],
                         "estimated_minutes": item["estimated_minutes"],
-                        "meta": {"url": url, "platform": platform, "provider": provider, "quality_score": qscore},
+                        "meta": {"url": url, "platform": platform, "provider": provider, "quality_score": qscore, "iframe_safe": iframe_safe},
                     }
                 )
 
             final_resources.sort(key=lambda x: int(x.get("meta", {}).get("quality_score", 0)), reverse=True)
             final_resources = ResourceCurator._ensure_diversity(final_resources, target_count)
 
-            if len(final_resources) >= 6:
-                return final_resources
+            merged = final_resources
+            if len(final_resources) < 6:
+                merged = final_resources + ResourceCurator._fallback_pack(skill)
+                merged = ResourceCurator._ensure_diversity(merged, target_count)
 
-            merged = final_resources + ResourceCurator._fallback_pack(skill)
-            merged = ResourceCurator._ensure_diversity(merged, target_count)
+            if supabase_client and merged:
+                try:
+                    records = []
+                    for m in merged:
+                        records.append({
+                            "skill_name": clean_skill,
+                            "type": m["type"],
+                            "title": m["title"],
+                            "description": m["description"],
+                            "url": m["meta"]["url"],
+                            "platform": m["meta"]["platform"],
+                            "provider": m["meta"]["provider"],
+                            "estimated_minutes": m["estimated_minutes"],
+                            "quality_score": m["meta"]["quality_score"],
+                            "iframe_safe": m["meta"]["iframe_safe"],
+                            "is_verified": False
+                        })
+                    supabase_client.table("resources").upsert(records, on_conflict="url").execute()
+                except Exception as e:
+                    logger.error(f"Database insert failed: {e}")
+
             return merged
 
         except Exception as e:
             logger.error(f"resource curation failed for {skill}: {e}")
-            return ResourceCurator._ensure_diversity(ResourceCurator._fallback_pack(skill), 10)
-
+            return ResourceCurator._ensure_diversity(ResourceCurator._fallback_pack(skill), target_count)
 
 @lru_cache(maxsize=80)
 def extract_skills_from_jd(description: str) -> List[Dict[str, Any]]:
@@ -462,7 +579,6 @@ def extract_skills_from_jd(description: str) -> List[Dict[str, Any]]:
     except Exception:
         return []
 
-
 def get_ai_analysis(role: str, skill: str, current: int, target: int) -> Dict[str, Any]:
     gap = target - current
     if gap >= 3:
@@ -474,21 +590,29 @@ def get_ai_analysis(role: str, skill: str, current: int, target: int) -> Dict[st
     estimated_hours = max(1, 2 + (gap * 2))
     return {"priority": priority, "estimated_hours": estimated_hours}
 
-
-def process_gap(gap: Dict[str, Any], prefs: Any) -> Dict[str, Any]:
+def process_gap(gap: Dict[str, Any], prefs: Any, use_db: bool = True) -> Dict[str, Any]:
     skill_name = gap.get("skill_name") or "Topic"
-    time.sleep(random.uniform(0.2, 0.9))
-
-    resources = ResourceCurator.curate_resources(
-        skill_name,
-        getattr(prefs, "experienceLevel", "Mid"),
-        getattr(prefs, "learningStyle", "Visual"),
-    )
+    
+    if use_db:
+        resources = ResourceCurator.curate_from_db(skill_name, 10)
+        if len(resources) < 3:
+            time.sleep(random.uniform(0.2, 0.9))
+            resources = ResourceCurator.curate_from_ai(
+                skill_name,
+                getattr(prefs, "experienceLevel", "Mid"),
+                getattr(prefs, "learningStyle", "Visual"),
+            )
+    else:
+        time.sleep(random.uniform(0.2, 0.9))
+        resources = ResourceCurator.curate_from_ai(
+            skill_name,
+            getattr(prefs, "experienceLevel", "Mid"),
+            getattr(prefs, "learningStyle", "Visual"),
+        )
 
     return {"skill_name": skill_name, "gap_hours": float(gap.get("estimated_hours", 5)), "resources": resources}
 
-
-def generate_dynamic_roadmap(gaps: List[Dict[str, Any]], prefs: Any) -> List[Dict[str, Any]]:
+def generate_dynamic_roadmap(gaps: List[Dict[str, Any]], prefs: Any, use_db: bool = True) -> List[Dict[str, Any]]:
     hours_per_week = int(getattr(prefs, "hoursPerWeek", 10) or 10)
     hours_per_week = max(1, hours_per_week)
 
@@ -500,7 +624,7 @@ def generate_dynamic_roadmap(gaps: List[Dict[str, Any]], prefs: Any) -> List[Dic
 
     results: List[Dict[str, Any]] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(process_gap, gap, prefs) for gap in gaps]
+        futures = [executor.submit(process_gap, gap, prefs, use_db) for gap in gaps]
         for f in concurrent.futures.as_completed(futures):
             try:
                 results.append(f.result())
@@ -520,7 +644,7 @@ def generate_dynamic_roadmap(gaps: List[Dict[str, Any]], prefs: Any) -> List[Dic
             meta = r.get("meta", {}) if isinstance(r.get("meta", {}), dict) else {}
             tasks.append(
                 {
-                    "id": str(uuid.uuid4()),
+                    "id": r.get("id") or str(uuid.uuid4()),
                     "type": r.get("type", "doc"),
                     "title": r.get("title", ""),
                     "description": r.get("description", ""),
@@ -538,7 +662,7 @@ def generate_dynamic_roadmap(gaps: List[Dict[str, Any]], prefs: Any) -> List[Dic
                 "week_number": phase_counter,
                 "label": f"Module: {focus}",
                 "focus_area": focus,
-                "description": f"Master {focus} through high quality resources.",
+                "description": f"Master {focus} through curated theory, media, and practical application.",
                 "tasks": tasks,
                 "total_hours": round(float(res.get("gap_hours", 0)), 1),
                 "start_date": current_date.strftime("%b %d"),
@@ -552,7 +676,6 @@ def generate_dynamic_roadmap(gaps: List[Dict[str, Any]], prefs: Any) -> List[Dic
         phase_counter += 1
 
     return roadmap
-
 
 def generate_interview_response(history: List[Dict[str, str]], user_input: str, role: str, company: str) -> Dict[str, Any]:
     if not client:
@@ -582,7 +705,6 @@ def generate_interview_response(history: List[Dict[str, str]], user_input: str, 
     except Exception as e:
         logger.error(f"Interview error: {e}")
         return {"text": "Could you go deeper into the technical implementation and trade offs"}
-
 
 def generate_quiz(skill: str, level: str) -> List[Dict[str, Any]]:
     if not client:
@@ -614,7 +736,6 @@ def generate_quiz(skill: str, level: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Quiz error: {e}")
         return []
-
 
 def grade_submission(title: str, requirements: str, user_input: str) -> Dict[str, Any]:
     if not client:
@@ -654,10 +775,9 @@ def grade_submission(title: str, requirements: str, user_input: str) -> Dict[str
         logger.error(f"Grading error: {e}")
         return {"passed": True, "feedback": "Grading service unavailable. Credit granted."}
 
-
 def interview_turn(history: List[Dict[str, Any]], user_input: str, role: str, company: str, context: str = "") -> Dict[str, Any]:
     if not client:
-        return {"text": "AI Offline. Lets continue."}
+        return {"text": "AI Offline. Let us continue.", "evaluation": "N/A"}
 
     history_text = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in history[-6:]])
 
@@ -671,25 +791,37 @@ def interview_turn(history: List[Dict[str, Any]], user_input: str, role: str, co
     Candidate said: {user_input}
 
     Task
-    1 If start introduce and ask first question
-    2 Otherwise acknowledge briefly and ask a follow up or new question
-    3 Keep under 50 words
-    4 If explaining architecture or flow include a diagram trigger token [Image of X]
+    1 Assess the candidate's answer and provide a brief internal evaluation (10 words max).
+    2 If this is the start, introduce yourself and ask the first technical question.
+    3 Otherwise, acknowledge the answer naturally and ask a relevant follow up or new technical question.
+    4 Keep the spoken text under 50 words.
+    5 If explaining architecture or flow, include a diagram trigger token [Image of X].
 
-    Output raw text only
+    OUTPUT JSON:
+    {{
+        "evaluation": "Brief internal assessment of the candidate's answer",
+        "text": "The spoken response to the candidate"
+    }}
     """
 
     try:
-        response = client.models.generate_content(model=MODEL_FAST, contents=prompt)
-        return {"text": (response.text or "").strip()}
+        response = generate_with_retry(
+            model=MODEL_FAST,
+            prompt=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json"),
+        )
+        data = json.loads(clean_json_text(response.text))
+        return {
+            "text": str(data.get("text", "Let us move to the next topic.")),
+            "evaluation": str(data.get("evaluation", "Candidate response captured for processing."))
+        }
     except Exception as e:
         logger.error(f"Interview turn error: {e}")
-        return {"text": "Ok. Lets move to the next topic."}
-
+        return {"text": "Ok. Let us move to the next topic.", "evaluation": "Error parsing evaluation."}
 
 def interview_report(history: List[Dict[str, Any]], role: str) -> Dict[str, Any]:
     if not client:
-        return {"overall_score": 0, "decision": "Error", "summary": "AI Offline"}
+        return {"overall_score": 0, "decision": "Error", "summary": "AI Offline", "strengths": [], "weaknesses": []}
 
     transcript = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in history])
 
@@ -729,3 +861,166 @@ def interview_report(history: List[Dict[str, Any]], role: str) -> Dict[str, Any]
     except Exception as e:
         logger.error(f"Report error: {e}")
         return {"overall_score": 0, "decision": "ERROR", "summary": "Could not generate report.", "strengths": [], "weaknesses": []}
+    
+
+def explain_notes(notes: str) -> Dict[str, Any]:
+    if not client:
+        return {"explanation": "AI unavailable"}
+
+    prompt = f"""
+    ACT AS: Senior software engineer mentor.
+
+    TASK:
+    Explain the following notes clearly and simply.
+
+    INSTRUCTIONS:
+    1 Break down complex ideas into simple terms
+    2 Add concrete examples where helpful
+    3 Highlight any unclear or weak areas
+    4 Keep it structured and easy to read
+
+    NOTES:
+    {notes[:12000]}
+
+    OUTPUT JSON:
+    {{
+        "explanation": "clear structured explanation",
+        "key_points": ["point1", "point2"],
+        "gaps": ["missing concept or unclear area"]
+    }}
+    """
+
+    try:
+        res = generate_with_retry(
+            model=MODEL_FAST,
+            prompt=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json"),
+        )
+        return json.loads(clean_json_text(res.text))
+    except Exception as e:
+        logger.error(f"Explain notes error: {e}")
+        return {"explanation": "Failed to explain notes"}
+
+def summarise_notes(notes: str) -> Dict[str, Any]:
+    if not client:
+        return {"summary": "AI unavailable"}
+
+    prompt = f"""
+    ACT AS: Technical educator.
+
+    TASK:
+    Summarise these notes for fast revision.
+
+    INSTRUCTIONS:
+    1 Extract only the most important ideas
+    2 Keep it concise and structured
+    3 Avoid fluff
+
+    NOTES:
+    {notes[:12000]}
+
+    OUTPUT JSON:
+    {{
+        "summary": "short paragraph",
+        "bullets": ["key idea 1", "key idea 2", "key idea 3"]
+    }}
+    """
+
+    try:
+        res = generate_with_retry(
+            model=MODEL_FAST,
+            prompt=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json"),
+        )
+        return json.loads(clean_json_text(res.text))
+    except Exception as e:
+        logger.error(f"Summarise error: {e}")
+        return {"summary": "Failed to summarise"}
+
+def ask_about_notes(notes: str, question: str) -> Dict[str, Any]:
+    if not client:
+        return {"answer": "AI unavailable"}
+
+    prompt = f"""
+    ACT AS: Senior engineer tutor.
+
+    TASK:
+    Answer the user's question using their notes as primary context.
+
+    INSTRUCTIONS:
+    1 Use the notes as the main source
+    2 If notes are incomplete, extend with correct knowledge
+    3 Be precise and practical
+    4 Keep it concise but insightful
+
+    NOTES:
+    {notes[:10000]}
+
+    QUESTION:
+    {question}
+
+    OUTPUT JSON:
+    {{
+        "answer": "clear answer",
+        "confidence": "high | medium | low",
+        "note_coverage": "did the notes fully answer this or not"
+    }}
+    """
+
+    try:
+        res = generate_with_retry(
+            model=MODEL_FAST,
+            prompt=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json"),
+        )
+        return json.loads(clean_json_text(res.text))
+    except Exception as e:
+        logger.error(f"Ask error: {e}")
+        return {"answer": "Failed to answer question"}
+
+
+
+def scan_cv_and_extract_skills(file_bytes: bytes, client, generate_with_retry, clean_json_text, map_1_10_to_1_5) -> Dict[str, int]:
+    try:
+        text = ""
+
+        try:
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                for page in pdf.pages:
+                    text += (page.extract_text() or "") + "\n"
+        except Exception as e:
+            logger.error(f"PDF parsing failed: {e}")
+            return {}
+
+        if len(text) < 50 or not client:
+            return {}
+
+        prompt = f"""
+        ROLE: Technical Recruiter.
+        TASK: Extract technical skills and estimate proficiency (1-10).
+        OUTPUT: JSON {{ "SkillName": Score }}
+        RESUME: {text[:15000]}
+        """
+
+        response = generate_with_retry(
+            model=CV_MODEL,
+            prompt=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json"),
+        )
+
+        data = json.loads(clean_json_text(response.text))
+
+        mapped: Dict[str, int] = {}
+
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if isinstance(v, (int, float)):
+                    mapped[k] = map_1_10_to_1_5(int(v))
+                elif isinstance(v, str) and v.isdigit():
+                    mapped[k] = map_1_10_to_1_5(int(v))
+
+        return mapped
+
+    except Exception as e:
+        logger.error(f"CV scan failed: {e}")
+        return {}

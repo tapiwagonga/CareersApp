@@ -573,4 +573,3 @@ export const ResourcePlayer = ({ task, onClose, onComplete }: Props) => {
     </AnimatePresence>
   );
 };
-

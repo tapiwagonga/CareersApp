@@ -1,4 +1,3 @@
-// --- APPLICATION STATE ---
 export enum AppStep {
   LANDING = "LANDING",
   AUTH = "AUTH",                 
@@ -9,9 +8,9 @@ export enum AppStep {
   LOADING = "LOADING",
   DASHBOARD = "DASHBOARD",
   INTERVIEW = "INTERVIEW",
+  ANALYTICS = "ANALYTICS" 
 }
 
-// --- USER INPUTS ---
 export interface TargetJob {
   company: string;
   role: string;
@@ -20,22 +19,21 @@ export interface TargetJob {
 }
 
 export interface Preferences {
-  learningStyle: string; // "Visual", "Auditory", "Text", "HandsOn"
+  learningStyle: string; 
   hoursPerWeek: number;
   experienceLevel: string;
   timeline: "Urgent" | "Standard" | "LongTerm"; 
 }
 
-// --- JD EXTRACTION DATA ---
+
 export interface SkillData {
   skill: string;
   category: string;
-  importance: "Critical" | "Bonus"; 
-  evidence?: string; 
-  context?: string;             
+  importance: "Critical" | "Bonus";
+  evidence?: string;
+  context?: string;
 }
 
-// --- RESOURCES (Used in the 'Missing Skills' list) ---
 export interface Resource {
   title: string;
   provider: string; 
@@ -48,76 +46,95 @@ export interface Resource {
   media_type: string;
 }
 
+export interface CuratedResource {
+  type: string;
+  title: string;
+  description: string;
+  estimated_minutes: number;
+  meta?: {
+    url?: string;
+    platform?: string;
+    provider?: string;
+    quality_score?: number;
+    iframe_safe?: boolean;
+  };
+}
+
 export interface GapItem {
   skill_name: string;
   current_level: number;
   target_level: number;
   priority: "High" | "Medium" | "Low";
   estimated_hours: number;
-  resources: Resource[];
+  resources: CuratedResource[];
 }
 
-// --- ROADMAP SYLLABUS (The Core Update) ---
+export type ResourceType =
+  | "Watch"
+  | "Read"
+  | "Build"
+  | "Practice"
+  | "video"
+  | "audio"
+  | "article"
+  | "course"
+  | "doc"
+  | "project"
+  | "boss_battle"
+  | "deep_dive"
+  | "repo"
+  | "interactive"
+  | "book"
+  | "documentation";
 
-// 1. Unified Resource Type (Supports Legacy & New Gamified Types)
-export type ResourceType = 
-  // Legacy types (Title Case) - KEEPING THESE PREVENTS DASHBOARD CRASHES
-  | "Watch" | "Read" | "Build" | "Practice" 
-  // New AI Agent types (Lowercase)
-  | "video" | "audio" | "article" | "course" | "doc" | "project" | "boss_battle";
 
-// 2. Enhanced Meta Data
-export interface ResourceMeta {
-  url?: string;
-  platform?: string;
-  thumbnail?: string;
-  author?: string;
-  duration?: string;
-}
+  export interface ResourceMeta {
+    url?: string;
+    platform?: string;
+    provider?: string;
+    thumbnail?: string;
+    author?: string;
+    duration?: string;
+    quality_score?: number;
+    iframe_safe?: boolean;
+  }
 
-
-// 3. The Gamified Task
 export interface RoadmapTask {
   id: string;
   title: string; 
   type: ResourceType; 
   description: string;
   estimated_minutes: number;
-  
-  // NEW: Gamification & Dates
-  xp_reward: number;          // Default: 0 if missing
-  due_date?: string;          // ISO Date String: "2024-03-12T17:00:00"
-  completed_at?: string;      // Timestamp when user checked it off
-  
+  xp_reward: number;          
+  due_date?: string;       
+  completed_at?: string;     
   meta: ResourceMeta;
   status: "Pending" | "In-Progress" | "Done" | "Locked" | "Completed"; 
 }
 
-// 4. The "Phase" (Formerly Week)
+
 export interface RoadmapPhase {
-  week_number: number; // Kept for sorting/ID
-  label: string;       // e.g. "Sprint: React Hooks" or "Phase 1: Foundations"
+  week_number: number; 
+  label: string;       
   focus_area: string;  
   description: string; 
   tasks: RoadmapTask[]; 
   total_hours: number;
-
-  // NEW: Timeline & Locking Logic
-  start_date?: string; // ISO String: "Mar 01"
-  end_date?: string;   // ISO String: "Mar 07"
-  is_locked: boolean;  // True if previous phase isn't done
+  start_date?: string; 
+  end_date?: string;  
+  is_locked: boolean;  
   is_completed: boolean;
 }
 
-// Alias for backward compatibility with old components
+
 export type RoadmapWeek = RoadmapPhase;
 
-// --- MASTER RESULT ---
+
 export interface AnalysisResult {
   role_name: string;
   match_percentage: number;
   missing_skills: GapItem[];
-  roadmap: RoadmapPhase[]; // Updated to use the new Phase interface
+  roadmap: RoadmapPhase[]; 
   summary?: {
     total_hours_required: number;
     weekly_commitment: number;
@@ -125,19 +142,17 @@ export interface AnalysisResult {
   };
 }
 
-// --- USER & PERSISTENCE ---
+
 
 export interface UserProfile {
   id: string;
   email: string;
-  name: string;       // React UI uses this
-  target_role: string; // The correct DB field
+  name: string;       
+  target_role: string; 
   avatar_config: any; 
   xp: number;
   level: number;
   created_at: string;
-  
-  // Optional legacy field to prevent typescript errors during migration
   role?: string; 
 }
 

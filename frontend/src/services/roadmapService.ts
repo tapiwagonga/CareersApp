@@ -6,11 +6,6 @@ export type SaveOptions = {
   status?: "active" | "archived";
   lastOpenedPhaseIndex?: number;
   lastOpenedTaskKey?: string | null;
-
-  /**
-   * Backwards compatible alias
-   * Keep this so older call sites do not explode
-   */
   phaseIndex?: number;
   taskKey?: string | null;
 };
@@ -93,20 +88,49 @@ export const roadmapService = {
       if (typeof phaseIndex === "number") payload.last_opened_phase_index = phaseIndex;
       if (taskKey !== undefined) payload.last_opened_task_key = taskKey;
 
-      if (options?.roadmapId) payload.id = options.roadmapId;
+      let targetId = options?.roadmapId;
 
-      const { data, error } = await supabase
-        .from("saved_roadmaps")
-        .upsert(payload, { onConflict: "user_id,role_title" })
-        .select("id")
-        .maybeSingle();
+      if (!targetId) {
+        const { data: existing } = await supabase
+          .from("saved_roadmaps")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("role_title", roleTitle)
+          .maybeSingle();
 
-      if (error) {
-        console.error("saveRoadmap error", error.message);
+        if (existing?.id) {
+          targetId = existing.id;
+        }
+      }
+
+      let resultData;
+      let resultError;
+
+      if (targetId) {
+        const { data, error } = await supabase
+          .from("saved_roadmaps")
+          .update(payload)
+          .eq("id", targetId)
+          .select("id")
+          .maybeSingle();
+        resultData = data;
+        resultError = error;
+      } else {
+        const { data, error } = await supabase
+          .from("saved_roadmaps")
+          .insert(payload)
+          .select("id")
+          .maybeSingle();
+        resultData = data;
+        resultError = error;
+      }
+
+      if (resultError) {
+        console.error("saveRoadmap error", resultError.message);
         return { ok: false };
       }
 
-      return { ok: true, id: data?.id };
+      return { ok: true, id: resultData?.id };
     } catch (e) {
       console.error("saveRoadmap crash", e);
       return { ok: false };
@@ -149,9 +173,6 @@ export const roadmapService = {
     }
   },
 
-  /**
-   * Backwards compatible alias
-   */
   async updateResume(
     userId: string,
     roleTitle: string,

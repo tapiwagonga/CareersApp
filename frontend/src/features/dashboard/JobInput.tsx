@@ -33,35 +33,42 @@ interface Props {
 }
 
 const MOCK_TEXT = {
-  role: "Senior Product Designer",
-  company: "Linear",
+  role: "Software Engineer, Product Infrastructure",
+  company: "Meta",
   description: `About the role:
-Linear is the issue tracker for modern software teams. We are looking for a Senior Product Designer to help us design the future of high-performance tools.
+Meta is building products that connect billions of people around the world. We are looking for a Software Engineer to design, build, and scale high-performance systems that power our core products.
 
 What we look for:
-- 5+ years of experience designing complex web applications.
-- Deep understanding of interaction design and visual polish.
-- Proficiency in Figma, Prototyping, and Design Systems.
-- Ability to write front-end code (CSS/React) is a major plus.
-- Experience working in a remote-first, async environment.
-- A portfolio demonstrating clear problem-solving and craft.`
+- Strong experience with JavaScript and modern frameworks such as React.
+- Proficiency in backend development using Python or Node.js.
+- Solid understanding of system design, distributed systems, and scalability.
+- Experience building and consuming RESTful or GraphQL APIs.
+- Familiarity with databases and data modelling (SQL or NoSQL).
+- Ability to write clean, efficient, and well-tested code.
+- Experience working in fast-paced, cross-functional engineering teams.
+
+Nice to have:
+- Experience designing large-scale systems serving millions of users.
+- Knowledge of cloud infrastructure, Docker, and Kubernetes.
+- Familiarity with performance optimisation and observability tools.
+- Exposure to CI/CD pipelines and DevOps practices.`
 };
 
 const FaqItem = ({ question, answer }: { question: string; answer: string }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="border-b border-gray-100 last:border-0">
+    <div className="border-b border-gray-200 last:border-0">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-full py-5 flex items-center justify-between text-left group"
         type="button"
       >
-        <span className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors text-lg">
+        <span className="font-bold text-gray-900 group-hover:text-gray-600 transition-colors text-lg">
           {question}
         </span>
         <ChevronDown
-          className={`text-gray-400 transition-transform duration-300 ${isOpen ? "rotate-180 text-indigo-600" : ""}`}
+          className={`text-gray-400 transition-transform duration-300 ${isOpen ? "rotate-180 text-black" : ""}`}
           size={20}
         />
       </button>
@@ -74,7 +81,7 @@ const FaqItem = ({ question, answer }: { question: string; answer: string }) => 
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <p className="pb-5 text-gray-500 text-base leading-relaxed max-w-2xl">{answer}</p>
+            <p className="pb-5 text-gray-600 text-base leading-relaxed max-w-2xl">{answer}</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -99,8 +106,7 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
           const blob = await response.blob();
           const file = new File([blob], "resume.pdf", { type: "application/pdf" });
           setData(prev => ({ ...prev, cvFile: file }));
-        } catch {
-        }
+        } catch {}
       };
       fetchResume();
     }
@@ -108,7 +114,7 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
 
   const validateAndSetFile = (file: File) => {
     if (file.type !== "application/pdf") {
-      alert("Please upload a PDF.");
+      alert("Please upload a PDF document for analysis.");
       return;
     }
     setData(prev => ({ ...prev, cvFile: file }));
@@ -169,41 +175,40 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
         const blob = await response.blob();
         const file = new File([blob], "resume.pdf", { type: "application/pdf" });
         setData(prev => ({ ...prev, cvFile: file }));
-      } catch {
-      }
+      } catch {}
     }
   };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-gray-900 font-sans selection:bg-black selection:text-white">
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[-10%] right-[-5%] w-[800px] h-[800px] bg-blue-100/40 rounded-full blur-[120px] opacity-70 mix-blend-multiply" />
-        <div className="absolute bottom-[-10%] left-[-5%] w-[600px] h-[600px] bg-purple-100/40 rounded-full blur-[120px] opacity-70 mix-blend-multiply" />
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 brightness-100 contrast-150" />
+        <div className="absolute top-[-10%] right-[-5%] w-[800px] h-[800px] bg-gray-200/40 rounded-full blur-[120px] opacity-70 mix-blend-multiply" />
+        <div className="absolute bottom-[-10%] left-[-5%] w-[600px] h-[600px] bg-gray-300/40 rounded-full blur-[120px] opacity-70 mix-blend-multiply" />
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] brightness-100 contrast-150" />
       </div>
 
       <div className="relative z-10 pt-16 pb-32 px-6">
         <div className="max-w-4xl mx-auto text-center mb-16 space-y-8">
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-gray-200 shadow-sm backdrop-blur-md"
+            className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white border border-gray-200 shadow-sm backdrop-blur-md"
           >
-            <Sparkles size={14} className="text-indigo-500 fill-indigo-500" />
-            <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
-              AI Career Architect v2.0
+            <Sparkles size={16} className="text-gray-900 fill-gray-900" />
+            <span className="text-[11px] font-bold uppercase tracking-widest text-gray-600">
+              Academic Project Prototype
             </span>
           </motion.div>
 
           <motion.h1
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 25 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="text-6xl md:text-8xl font-serif font-medium tracking-tight text-gray-900 leading-[0.95]"
+            className="text-6xl md:text-8xl font-black tracking-tight text-gray-900 leading-[0.95]"
           >
-            Stop Guessing. <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-900 via-gray-700 to-gray-900 italic">
-              Start Hired.
+            Find The Gaps. <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-500 via-gray-800 to-gray-500">
+              Build Your Skills.
             </span>
           </motion.h1>
 
@@ -211,12 +216,9 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
-            className="text-xl text-gray-600 font-light max-w-2xl mx-auto leading-relaxed"
+            className="text-xl text-gray-600 font-medium max-w-2xl mx-auto leading-relaxed"
           >
-            Most applications fail because they miss the unspoken requirements.
-            We use AI to decode the job description and build you a{" "}
-            <span className="font-semibold text-black">precision-engineered</span>{" "}
-            roadmap to the offer.
+            This prototype uses AI to cross reference your CV with a specific job description. It identifies exactly what technical skills you are missing and generates a custom roadmap to help you learn them.
           </motion.p>
         </div>
 
@@ -224,33 +226,33 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.8, type: "spring" }}
-          className="max-w-4xl mx-auto bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-indigo-900/10 border border-white p-8 md:p-12 relative overflow-hidden ring-1 ring-gray-900/5"
+          className="max-w-4xl mx-auto bg-white/80 backdrop-blur-2xl rounded-[3rem] shadow-2xl shadow-gray-900/10 border border-white p-8 md:p-14 relative overflow-hidden ring-1 ring-gray-900/5"
         >
-          <div className="absolute top-0 right-0 p-6 z-20">
+          <div className="absolute top-0 right-0 p-8 z-20">
             <button
               onClick={handleFillDemo}
-              className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-indigo-500 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition-colors"
+              className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-gray-600 hover:text-black bg-gray-100 hover:bg-gray-200 px-5 py-2.5 rounded-xl transition-all shadow-sm"
               type="button"
             >
-              <Zap size={14} className="fill-indigo-500" /> Auto-Fill Demo
+              <Zap size={16} className="fill-gray-600" /> Load Sample Data
             </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-12 relative z-10">
             <div className="grid md:grid-cols-2 gap-8">
               <div className="space-y-3 group">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1 group-focus-within:text-indigo-600 transition-colors">
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest ml-1 group-focus-within:text-black transition-colors">
                   Target Role
                 </label>
                 <div className="relative">
                   <Briefcase
-                    className="absolute left-5 top-5 text-gray-300 group-focus-within:text-black transition-colors"
-                    size={20}
+                    className="absolute left-5 top-5 text-gray-400 group-focus-within:text-black transition-colors"
+                    size={22}
                   />
                   <input
                     type="text"
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-14 pr-6 py-5 font-medium text-lg text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-black focus:ring-4 focus:ring-gray-100 transition-all outline-none"
-                    placeholder="e.g. Senior Frontend Engineer"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-3xl pl-16 pr-6 py-5 font-bold text-lg text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-black focus:ring-4 focus:ring-gray-900/5 transition-all outline-none shadow-sm"
+                    placeholder="e.g. Frontend Developer"
                     value={data.role}
                     onChange={e => setData({ ...data, role: e.target.value })}
                     required
@@ -259,18 +261,18 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
               </div>
 
               <div className="space-y-3 group">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1 group-focus-within:text-indigo-600 transition-colors">
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest ml-1 group-focus-within:text-black transition-colors">
                   Company
                 </label>
                 <div className="relative">
                   <Building2
-                    className="absolute left-5 top-5 text-gray-300 group-focus-within:text-black transition-colors"
-                    size={20}
+                    className="absolute left-5 top-5 text-gray-400 group-focus-within:text-black transition-colors"
+                    size={22}
                   />
                   <input
                     type="text"
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-14 pr-6 py-5 font-medium text-lg text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-black focus:ring-4 focus:ring-gray-100 transition-all outline-none"
-                    placeholder="e.g. Netflix"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-3xl pl-16 pr-6 py-5 font-bold text-lg text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-black focus:ring-4 focus:ring-gray-900/5 transition-all outline-none shadow-sm"
+                    placeholder="e.g. Tech Corp"
                     value={data.company}
                     onChange={e => setData({ ...data, company: e.target.value })}
                   />
@@ -280,21 +282,21 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">
-                  The Wishlist
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                  Job Description
                 </label>
 
-                <div className="bg-gray-100 p-1 rounded-xl flex relative">
+                <div className="bg-gray-100 p-1.5 rounded-2xl flex relative shadow-inner">
                   <motion.div
-                    className="absolute top-1 bottom-1 w-[50%] bg-white rounded-lg shadow-sm border border-gray-200"
+                    className="absolute top-1.5 bottom-1.5 w-[50%] bg-white rounded-xl shadow-sm border border-gray-200"
                     animate={{ x: inputMode === "text" ? 0 : "100%" }}
-                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                   <button
                     type="button"
                     onClick={() => setInputMode("text")}
-                    className={`relative z-10 flex-1 px-5 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                      inputMode === "text" ? "text-black" : "text-gray-400 hover:text-gray-600"
+                    className={`relative z-10 flex-1 px-6 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors ${
+                      inputMode === "text" ? "text-gray-900" : "text-gray-500 hover:text-gray-700"
                     }`}
                   >
                     Paste Text
@@ -302,8 +304,8 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
                   <button
                     type="button"
                     onClick={() => setInputMode("link")}
-                    className={`relative z-10 flex-1 px-5 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                      inputMode === "link" ? "text-black" : "text-gray-400 hover:text-gray-600"
+                    className={`relative z-10 flex-1 px-6 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors ${
+                      inputMode === "link" ? "text-gray-900" : "text-gray-500 hover:text-gray-700"
                     }`}
                   >
                     Link URL
@@ -316,13 +318,14 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
                   {inputMode === "text" ? (
                     <motion.div
                       key="text"
-                      initial={{ opacity: 0, y: 5 }}
+                      initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -5 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2 }}
                     >
                       <textarea
-                        className="w-full h-64 bg-gray-50 border border-gray-200 rounded-2xl p-6 font-mono text-sm text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-black focus:ring-4 focus:ring-gray-100 transition-all resize-none outline-none leading-relaxed custom-scrollbar"
-                        placeholder="Paste the entire job description here. Do not worry about formatting, our AI parses it."
+                        className="w-full h-72 bg-gray-50 border border-gray-200 rounded-3xl p-8 font-mono text-sm text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-black focus:ring-4 focus:ring-gray-900/5 transition-all resize-none outline-none leading-relaxed shadow-sm"
+                        placeholder="Paste the job description here. The AI will extract the technical requirements for you."
                         value={data.description}
                         onChange={e => setData({ ...data, description: e.target.value })}
                         required={inputMode === "text"}
@@ -331,26 +334,27 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
                   ) : (
                     <motion.div
                       key="link"
-                      initial={{ opacity: 0, y: 5 }}
+                      initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -5 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2 }}
                     >
                       <div className="relative">
                         <Globe
-                          className="absolute left-5 top-5 text-gray-300 group-focus-within:text-black transition-colors"
-                          size={20}
+                          className="absolute left-5 top-5 text-gray-400 group-focus-within:text-black transition-colors"
+                          size={22}
                         />
                         <input
                           type="url"
-                          className="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-14 pr-6 py-5 font-medium text-lg text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-black focus:ring-4 focus:ring-gray-100 transition-all outline-none"
+                          className="w-full bg-gray-50 border border-gray-200 rounded-3xl pl-16 pr-6 py-5 font-bold text-lg text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-black focus:ring-4 focus:ring-gray-900/5 transition-all outline-none shadow-sm"
                           placeholder="https://linkedin.com/jobs/view/..."
                           value={data.jd_url || ""}
                           onChange={e => setData({ ...data, jd_url: e.target.value })}
                           required={inputMode === "link"}
                         />
                       </div>
-                      <p className="text-xs text-gray-400 mt-3 ml-2 flex items-center gap-1">
-                        <ShieldCheck size={12} /> Works with LinkedIn, Indeed, Greenhouse, and Lever.
+                      <p className="text-xs font-bold text-gray-500 mt-4 ml-3 flex items-center gap-1.5 uppercase tracking-wide">
+                        <ShieldCheck size={14} className="text-black" /> Works with standard job board links.
                       </p>
                     </motion.div>
                   )}
@@ -359,8 +363,8 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
             </div>
 
             <div className="space-y-3">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">
-                Your Resume (For Gap Analysis)
+              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                Your CV (PDF Format)
               </label>
 
               <div
@@ -372,9 +376,9 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
                 className={`
-                  relative border-2 border-dashed rounded-2xl p-2 transition-all duration-300 cursor-pointer overflow-hidden
-                  ${isDragging ? "border-indigo-500 bg-indigo-50/50 scale-[1.01]" : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"}
-                  ${data.cvFile ? "bg-white border-green-200 border-solid" : ""}
+                  relative border-[3px] border-dashed rounded-[2rem] p-2.5 transition-all duration-300 cursor-pointer overflow-hidden
+                  ${isDragging ? "border-gray-900 bg-gray-100 scale-[1.02] shadow-xl shadow-gray-900/10" : "border-gray-200 hover:border-gray-400 hover:bg-gray-50"}
+                  ${data.cvFile ? "bg-white border-black border-solid shadow-lg shadow-gray-900/5" : ""}
                 `}
               >
                 <input
@@ -385,35 +389,35 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
                   className="hidden"
                 />
 
-                <div className={`p-6 md:p-8 rounded-xl flex items-center gap-6 transition-all ${data.cvFile ? "bg-green-50/40" : ""}`}>
+                <div className={`p-8 md:p-10 rounded-3xl flex items-center gap-6 transition-all ${data.cvFile ? "bg-gray-50" : ""}`}>
                   <div
-                    className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 transition-colors ${
+                    className={`w-20 h-20 rounded-[1.5rem] flex items-center justify-center shrink-0 transition-colors ${
                       data.cvFile
-                        ? "bg-green-500 text-white shadow-lg shadow-green-200"
-                        : "bg-white border border-gray-200 text-gray-300 shadow-sm"
+                        ? "bg-black text-white shadow-xl shadow-gray-900/20"
+                        : "bg-white border border-gray-200 text-gray-400 shadow-sm"
                     }`}
                   >
-                    {data.cvFile ? <FileCheck size={28} /> : <Upload size={28} />}
+                    {data.cvFile ? <FileCheck size={32} strokeWidth={2.5} /> : <Upload size={32} strokeWidth={2.5} />}
                   </div>
 
                   <div className="flex-1 min-w-0">
                     {data.cvFile ? (
                       <>
-                        <p className="font-bold text-gray-900 text-lg truncate">{data.cvFile.name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                          <p className="text-xs text-green-700 font-bold uppercase tracking-wider">
-                            Ready for Deep Scan
+                        <p className="font-black text-gray-900 text-xl truncate tracking-tight">{data.cvFile.name}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="w-2.5 h-2.5 bg-black rounded-full animate-pulse shadow-[0_0_10px_rgba(0,0,0,0.5)]" />
+                          <p className="text-[11px] text-gray-700 font-bold uppercase tracking-widest">
+                            Document Attached
                           </p>
                         </div>
                       </>
                     ) : (
                       <>
-                        <p className="font-bold text-gray-900 text-lg group-hover:text-indigo-600 transition-colors">
-                          Upload Resume (PDF)
+                        <p className="font-black text-gray-900 text-xl group-hover:text-black transition-colors tracking-tight">
+                          Upload CV (PDF)
                         </p>
-                        <p className="text-sm text-gray-400 mt-1">
-                          We compare your skills against the job requirements.
+                        <p className="text-sm font-medium text-gray-500 mt-2 leading-relaxed">
+                          We will extract your skills to compare against the requirements.
                         </p>
                       </>
                     )}
@@ -422,10 +426,10 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
                   {data.cvFile && (
                     <button
                       onClick={removeFile}
-                      className="p-3 bg-white rounded-xl border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 transition-colors shadow-sm"
+                      className="p-4 bg-white rounded-2xl border border-gray-200 text-gray-500 hover:text-black hover:border-gray-400 transition-all shadow-sm hover:shadow-md"
                       type="button"
                     >
-                      <X size={20} />
+                      <X size={24} strokeWidth={2.5} />
                     </button>
                   )}
                 </div>
@@ -439,19 +443,19 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
                 !data.role?.trim() ||
                 (inputMode === "text" ? !data.description?.trim() : !data.jd_url?.trim())
               }
-              className="w-full bg-black text-white font-bold text-xl py-6 rounded-2xl shadow-xl hover:shadow-2xl hover:bg-gray-900 hover:-translate-y-1 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-4 group relative overflow-hidden"
+              className="w-full bg-black text-white font-bold text-xl py-6 rounded-3xl shadow-xl shadow-gray-900/20 hover:shadow-2xl hover:bg-gray-900 hover:-translate-y-1 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-4 group relative overflow-hidden tracking-wide"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-black opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-black opacity-0 group-hover:opacity-10 transition-opacity duration-500" />
               <div className="relative flex items-center gap-3">
                 {isLoading ? (
                   <>
-                    <Loader2 className="animate-spin" size={24} />
-                    <span>Analysing Intelligence...</span>
+                    <Loader2 className="animate-spin" size={28} />
+                    <span>Analysing Data...</span>
                   </>
                 ) : (
                   <>
-                    <span>Reveal My Gaps & Build Strategy</span>
-                    <ArrowRight size={24} className="group-hover:translate-x-1 transition-transform" />
+                    <span>Generate Gap Analysis</span>
+                    <ArrowRight size={28} strokeWidth={2.5} className="group-hover:translate-x-2 transition-transform duration-300" />
                   </>
                 )}
               </div>
@@ -459,37 +463,35 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
           </form>
         </motion.div>
 
-        <div className="mt-12 text-center opacity-60">
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">
-            Trusted by candidates applying to
-          </p>
-          <div className="flex justify-center gap-8 grayscale opacity-50">
-            <span className="font-bold text-xl text-gray-500 font-serif">Google</span>
-            <span className="font-bold text-xl text-gray-500 font-serif">Stripe</span>
-            <span className="font-bold text-xl text-gray-500 font-serif">Airbnb</span>
-            <span className="font-bold text-xl text-gray-500 font-serif">Netflix</span>
-          </div>
+        <div className="mt-16 text-center opacity-70">
+          {/* <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500 mb-6">
+            Technologies Used
+          </p> */}
+          {/* <div className="flex justify-center gap-10 grayscale opacity-60">
+            <span className="font-bold text-2xl text-gray-400 font-serif tracking-tight">Gemini AI</span>
+            <span className="font-bold text-2xl text-gray-400 font-serif tracking-tight">React</span>
+            <span className="font-bold text-2xl text-gray-400 font-serif tracking-tight">FastAPI</span>
+            <span className="font-bold text-2xl text-gray-400 font-serif tracking-tight">Python</span>
+          </div> */}
         </div>
       </div>
 
-      <div className="bg-white border-t border-gray-100 py-32 px-6 relative overflow-hidden">
+      <div className="bg-white border-t border-gray-200 py-32 px-6 relative overflow-hidden">
         <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-24 items-center">
           <div>
-            <h2 className="text-5xl font-serif font-medium text-gray-900 mb-8 leading-tight">
-              The Black Box of <br /> Hiring is Broken.
+            <h2 className="text-5xl md:text-6xl font-black text-gray-900 mb-8 leading-[1.1] tracking-tight">
+              How the System <br /> Actually Works.
             </h2>
-            <div className="space-y-6 text-lg text-gray-600 font-light leading-relaxed">
+            <div className="space-y-6 text-lg text-gray-600 font-medium leading-relaxed">
               <p>
-                75% of resumes are rejected by ATS bots before a human ever sees them. This happens due to missing
-                keywords or mismatched skill definitions.
+                This application demonstrates how Large Language Models can structure qualitative data. We take two pieces of unstructured text and compute the differences.
               </p>
-              <p>Even if you pass the bot, you walk into the interview guessing what they actually care about.</p>
+              <p>It goes beyond simple keyword matching to understand semantic context, providing a realistic breakdown of technical capabilities.</p>
             </div>
 
-            <div className="mt-10 p-6 bg-gray-50 rounded-2xl border-l-4 border-indigo-500">
-              <p className="text-gray-900 font-medium text-lg italic">
-                SkillGap gives you X-Ray vision. It shows you exactly what the hiring manager is looking for, so you can
-                tailor your prep and walk in as the perfect candidate.
+            <div className="mt-10 p-8 bg-gray-50 rounded-[2rem] border-l-4 border-black shadow-inner">
+              <p className="text-gray-900 font-bold text-lg italic leading-relaxed">
+                The final output is a step by step curriculum generated in real time to address the exact deficiencies identified during the analysis.
               </p>
             </div>
           </div>
@@ -497,31 +499,37 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
           <div className="grid gap-6">
             {[
               {
-                icon: <Target className="text-indigo-500" />,
-                title: "Precision Targeting",
-                desc: "We parse the JD to extract specific toolchains."
+                icon: <Target className="text-black" size={24} strokeWidth={2.5} />,
+                title: "Extract Requirements",
+                desc: "We parse the job description to find the exact tools and frameworks required.",
+                bg: "bg-gray-100",
+                border: "border-gray-200"
               },
               {
-                icon: <TrendingUp className="text-green-500" />,
-                title: "Gap Analysis",
-                desc: "We visualise the delta between your resume and the role requirements."
+                icon: <TrendingUp className="text-black" size={24} strokeWidth={2.5} />,
+                title: "Analyse Gaps",
+                desc: "We compare your CV to the job description to visualise exactly what you are missing.",
+                bg: "bg-gray-100",
+                border: "border-gray-200"
               },
               {
-                icon: <BookOpen className="text-blue-500" />,
-                title: "Curated Upskilling",
-                desc: "Get a custom curriculum of docs and videos to fill those gaps."
+                icon: <BookOpen className="text-black" size={24} strokeWidth={2.5} />,
+                title: "Generate Curriculum",
+                desc: "The system builds a step by step study plan to help you learn the missing skills.",
+                bg: "bg-gray-100",
+                border: "border-gray-200"
               }
             ].map((item, i) => (
               <div
                 key={i}
-                className="flex gap-6 p-6 rounded-2xl bg-gray-50 border border-gray-100 hover:border-indigo-100 hover:bg-white hover:shadow-xl hover:shadow-indigo-100/50 transition-all duration-300 group"
+                className="flex gap-6 p-6 rounded-[2rem] bg-white border border-gray-200 hover:border-black hover:shadow-xl transition-all duration-300 group cursor-default"
               >
-                <div className="w-14 h-14 bg-white rounded-xl shadow-sm border border-gray-100 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <div className={`w-16 h-16 rounded-2xl shadow-sm border flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300 ${item.bg} ${item.border}`}>
                   {item.icon}
                 </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 text-xl mb-1">{item.title}</h3>
-                  <p className="text-gray-500 leading-relaxed">{item.desc}</p>
+                <div className="pt-2">
+                  <h3 className="font-bold text-gray-900 text-xl mb-2 tracking-tight">{item.title}</h3>
+                  <p className="text-gray-500 font-medium leading-relaxed">{item.desc}</p>
                 </div>
               </div>
             ))}
@@ -529,8 +537,8 @@ export const JobInput = ({ initialData, onSubmit, isLoading = false }: Props) =>
         </div>
       </div>
 
-      <footer className="py-12 text-center bg-white border-t border-gray-100">
-        <p className="text-gray-400 text-sm font-medium">© 2026 SkillGap AI. Build the career you deserve.</p>
+      <footer className="py-12 text-center bg-gray-50 border-t border-gray-200">
+        <p className="text-gray-500 text-sm font-bold tracking-wide uppercase">© 2026 Academic Research Prototype. Designed for educational use.</p>
       </footer>
     </div>
   );

@@ -1,7 +1,5 @@
 from __future__ import annotations
-
 from typing import List, Optional, Tuple
-
 from .. import models, schemas
 from ..ai_agent import ResourceCurator
 from ..repositories.assessment_repo import AssessmentRepository

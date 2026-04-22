@@ -120,3 +120,5 @@ class LearningResource(Base):
     votes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     skill: Mapped["Skill"] = relationship()
+
+

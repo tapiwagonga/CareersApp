@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Avatar from "react-nice-avatar";
-import { Check, User, MessageSquare, Map, LogIn, Wifi, WifiOff } from "lucide-react";
+import { Check, User, MessageSquare, Map, LogIn, Wifi, WifiOff, ChartScatter } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./Context/AuthContext";
 import { AuthModal } from "./features/auth/AuthModal";
@@ -9,20 +9,23 @@ import { AuthScreen } from "./features/auth/AuthScreen";
 import { JobInput } from "./features/dashboard/JobInput";
 import { SkillAssessment } from "./features/dashboard/SkillAssessment";
 import { Dashboard } from "./features/dashboard/Dashboard";
+import { DatabaseDashboard } from "./features/dashboard/DatabaseDashboard";
 import { AvatarBuilder } from "./features/profile/AvatarBuilder";
 import { UserProfileView } from "./features/profile/UserProfile";
 import { InterviewSetup } from "./features/interview/InterviewSetup";
 import { InterviewSession } from "./features/interview/InterviewSession";
 import { useCareerFlow } from "./hooks/useCareerFlow";
-import { AppStep } from "./types";
+import { AppStep, UserProfile } from "./types";
+import TrendingDashboard from "./features/resources/TrendingDashboard";
 
 const ROADMAP_STEPS = [
   { id: 1, label: "Start", step: AppStep.LANDING },
   { id: 2, label: "Skills", step: AppStep.ASSESSMENT },
   { id: 3, label: "Path", step: AppStep.DASHBOARD },
+  { id: 4, label: "Analytics", step: AppStep.ANALYTICS },
 ];
 
-type ViewMode = "roadmap" | "interview";
+type ViewMode = "roadmap" | "interview" | "analytics";
 
 function App() {
   const { state, actions, helpers } = useCareerFlow();
@@ -34,6 +37,7 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("roadmap");
   const [showProfile, setShowProfile] = useState(false);
   const [isEditingAvatar, setIsEditingAvatar] = useState(false);
+  const [roadmapSource, setRoadmapSource] = useState<'ai' | 'database'>('ai');
 
   const [interviewContext, setInterviewContext] = useState<{ role: string; company: string; jd: string } | null>(null);
 
@@ -45,10 +49,9 @@ function App() {
     checkConnection();
   }, []);
 
-  const activeProfile = useMemo(() => {
+  const activeProfile = useMemo<UserProfile>(() => {
     const email = user?.email || (profile as any)?.email || state.userProfile?.email || "";
     const fallbackName = email ? email.split("@")[0] : "Guest";
-
 
     const fullName =
       state.userProfile?.name ||
@@ -74,6 +77,8 @@ function App() {
       target_role: targetRole,
       avatar_config: avatarConfig,
       xp: (profile as any)?.current_xp || (profile as any)?.xp || 0,
+      level: (profile as any)?.level || 1,
+      created_at: (profile as any)?.created_at || new Date().toISOString(),
     };
   }, [user, profile, state.userProfile]);
 
@@ -213,9 +218,16 @@ function App() {
               >
                 <MessageSquare size={14} /> Coach
               </button>
+              <button
+                onClick={() => setViewMode("analytics")}
+                className={`relative px-6 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 flex items-center gap-2 z-10 ${viewMode === "analytics" ? "text-white" : "text-gray-500 hover:text-gray-900"}`}
+              >
+                <ChartScatter size={14} /> Analytics
+              </button>
+
               <motion.div
-                className="absolute top-1 left-1 bottom-1 w-[calc(50%-4px)] bg-black rounded-full shadow-md z-0"
-                animate={{ x: viewMode === "roadmap" ? 0 : "100%" }}
+                className="absolute top-1 left-1 bottom-1 w-[calc(33.33%-4px)] bg-black rounded-full shadow-md z-0"
+                animate={{ x: viewMode === "roadmap" ? 0 : viewMode === "interview" ? "100%" : "200%" }}
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
               />
             </div>
@@ -309,7 +321,16 @@ function App() {
 
               {state.currentStep === AppStep.ASSESSMENT && (
                 <motion.div key="assessment" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                  <SkillAssessment roleName={state.targetJob?.role || "Role"} skillsList={state.dynamicSkills} scannedLevels={state.scannedLevels} onSubmit={actions.handleAssessmentSubmit} onCancel={actions.goBack} />
+                  <SkillAssessment 
+                    roleName={state.targetJob?.role || "Role"} 
+                    skillsList={state.dynamicSkills} 
+                    scannedLevels={state.scannedLevels} 
+                    onSubmit={(skills, source) => {
+                      setRoadmapSource(source);
+                      actions.handleAssessmentSubmit(skills);
+                    }} 
+                    onCancel={actions.goBack} 
+                  />
                 </motion.div>
               )}
 
@@ -328,15 +349,27 @@ function App() {
 
               {state.currentStep === AppStep.DASHBOARD && state.analysis && (
                 <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <Dashboard
-                    data={state.analysis}
-                    onReset={actions.handleReset}
-                    onExit={actions.handleExit}
-                    onStartInterview={() => setViewMode("interview")}
-                    onUpdate={actions.updateRoadmapProgress}
-                    userId={user?.id}
-                    createdAt={(state.analysis as any)?._meta?.created_at}
-                  />
+                  {roadmapSource === 'database' ? (
+                    <DatabaseDashboard
+                      data={state.analysis}
+                      onReset={actions.handleReset}
+                      onExit={actions.handleExit}
+                      onStartInterview={() => setViewMode("interview")}
+                      onUpdate={actions.updateRoadmapProgress}
+                      userId={user?.id}
+                      createdAt={(state.analysis as any)?._meta?.created_at}
+                    />
+                  ) : (
+                    <Dashboard
+                      data={state.analysis}
+                      onReset={actions.handleReset}
+                      onExit={actions.handleExit}
+                      onStartInterview={() => setViewMode("interview")}
+                      onUpdate={actions.updateRoadmapProgress}
+                      userId={user?.id}
+                      createdAt={(state.analysis as any)?._meta?.created_at}
+                    />
+                  )}
                 </motion.div>
               )}
             </>
@@ -346,14 +379,20 @@ function App() {
             <motion.div key="interview" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
               {state.targetJob || interviewContext ? (
                 <InterviewSession
-                  user={activeProfile as any}
-                  defaultRole={state.targetJob?.role || interviewContext?.role || "Engineer"}
-                  defaultCompany={state.targetJob?.company || interviewContext?.company || "Tech Corp"}
+                  user={activeProfile}
+                  role={state.targetJob?.role || interviewContext?.role || "Engineer"}
+                  company={state.targetJob?.company || interviewContext?.company || "Tech Corp"}
                   onClose={() => setViewMode("roadmap")}
                 />
               ) : (
                 <InterviewSetup onStart={(role, company, jd) => setInterviewContext({ role, company, jd })} onCancel={() => setViewMode("roadmap")} />
               )}
+            </motion.div>
+          )}
+
+          {viewMode === "analytics" && (
+            <motion.div key="analytics" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+              <TrendingDashboard />
             </motion.div>
           )}
 
@@ -370,7 +409,7 @@ function App() {
       <AnimatePresence>
         {showProfile && user && activeProfile.id && (
           <UserProfileView
-            user={activeProfile as any}
+            user={activeProfile}
             stats={{
               skillsFound: state.dynamicSkills.length,
               completedModules: 0,

@@ -11,7 +11,6 @@ import {
   UserProfile 
 } from "../types";
 
-// Import the timeline engine to calculate dates
 import { recalculateTimeline } from "../utils/timeline"; 
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -24,11 +23,9 @@ const DEFAULT_PREFS: Preferences = {
 };
 
 export const useCareerFlow = () => {
-  // --- STATE ---
   const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.LANDING);
   const [loadingText, setLoadingText] = useState("");
   
-  // --- DATA ---
   const [targetJob, setTargetJob] = useState<TargetJob | null>(null);
   const [dynamicSkills, setDynamicSkills] = useState<SkillData[]>([]);
   const [userSkills, setUserSkills] = useState<Record<string, number>>({});
@@ -38,7 +35,6 @@ export const useCareerFlow = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null); 
   const [pendingPrefs, setPendingPrefs] = useState<Preferences | null>(null);
 
-  // --- 1. AUTO-RESTORE SESSION ---
   useEffect(() => {
     checkActiveSession();
   }, []);
@@ -56,36 +52,6 @@ export const useCareerFlow = () => {
             
             if (profile) {
                  setUserProfile(profile);
-                 
-                 // Check Supabase for active roadmap
-                 const { data: roadmaps } = await supabase
-                    .from('saved_roadmaps')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .eq('status', 'active')
-                    .order('last_accessed_at', { ascending: false })
-                    .limit(1);
-
-                 if (roadmaps && roadmaps.length > 0) {
-                     // CHECK FLAG: Did the user explicitly exit recently?
-                     // If they clicked "Back to Home", we don't force them back to Dashboard
-                     const manualExit = sessionStorage.getItem("manualExit");
-                     
-                     if (manualExit) {
-                         console.log("🚫 Auto-restore suppressed by manual exit.");
-                         return; // Stay on Landing
-                     }
-
-                     console.log("🔄 Restoring session...", roadmaps[0]);
-                     setAnalysis(roadmaps[0].roadmap_data);
-                     setTargetJob({ 
-                        role: roadmaps[0].role_title, 
-                        company: "Resumed Session", 
-                        description: "Resumed from database", 
-                        cvFile: null 
-                    });
-                     setCurrentStep((prev) => prev === AppStep.LANDING ? AppStep.DASHBOARD : prev);
-                 }
             } else {
                 await supabase.from('profiles').insert({
                     id: user.id,
@@ -96,11 +62,10 @@ export const useCareerFlow = () => {
             }
         }
     } catch (err) {
-        console.error("Session check failed:", err);
+        console.error(err);
     }
   };
 
-  // --- NAVIGATION HELPERS ---
   const isStepAccessible = (step: AppStep): boolean => {
     switch (step) {
       case AppStep.LANDING: return true;
@@ -135,7 +100,6 @@ export const useCareerFlow = () => {
     }
   };
 
-  // --- API ---
   const apiCallWithRetry = async (url: string, data: any, retries = 3, backoff = 5000) => {
     for (let i = 0; i < retries; i++) {
         try {
@@ -147,22 +111,21 @@ export const useCareerFlow = () => {
                 alert("Cannot connect to server. Is the Python Backend running on port 8000?");
                 throw err;
             }
-            const isRateLimit = err.response && err.response.status === 429;
-            if (isRateLimit && i < retries - 1) {
-                setLoadingText(`High Traffic... Retrying (${i + 1}/${retries})`);
-                await sleep(backoff);
-                backoff *= 1.5; 
+            const status = err.response?.status;
+            const isRetryable = status === 429 || status === 503;
+
+            if (isRetryable && i < retries - 1) {
+              setLoadingText(`AI busy... Retrying (${i + 1}/${retries})`);
+              await sleep(backoff);
+              backoff *= 1.5;
             } else {
-                throw err;
+              throw err;
             }
         }
     }
   };
 
-  // --- ACTIONS ---
-
   const handleJobSubmit = async (data: TargetJob) => {
-    // START NEW SEARCH -> Clear Exit Flag so normal flow works
     sessionStorage.removeItem("manualExit");
     
     setTargetJob(data);
@@ -196,7 +159,7 @@ export const useCareerFlow = () => {
       setLoadingText(""); 
       setCurrentStep(AppStep.ASSESSMENT);
     } catch (err: any) {
-      console.error("❌ Analysis Error:", err);
+      console.error(err);
       setLoadingText(""); 
       setCurrentStep(AppStep.LANDING);
       alert("Analysis failed. Please try again or paste a clearer Job Description.");
@@ -217,6 +180,7 @@ export const useCareerFlow = () => {
 
   const generateRoadmap = async (prefs: Preferences, skillsOverride?: Record<string, number>) => {
     if (!targetJob) return;
+  
     setCurrentStep(AppStep.LOADING);
     setLoadingText("Generating Roadmap...");
   
@@ -224,69 +188,83 @@ export const useCareerFlow = () => {
       const payload = {
         role_name: targetJob.role,
         user_skills: skillsOverride || userSkills,
-        preferences: prefs
+        required_skills: dynamicSkills.map((skill) => ({
+          skill: skill.skill,
+          category: skill.category,
+          importance: skill.importance,
+          evidence: skill.evidence,
+          context: skill.context,
+          target_level: skill.importance === "Critical" ? 5 : 3
+        })),
+        preferences: {
+          experienceLevel: prefs.experienceLevel,
+          learningStyle: prefs.learningStyle,
+          hoursPerWeek: prefs.hoursPerWeek,
+          timeline: prefs.timeline
+        }
       };
-      
-      const res = await apiCallWithRetry('/api/v1/analyze', payload);
-      
+  
+      const res = await apiCallWithRetry("/api/v1/analyze", payload);
+  
       if (res?.data) {
-          let newAnalysis = res.data;
-
-          // --- ACCOUNTABILITY: CALCULATE DATES ---
-          const pace = prefs.hoursPerWeek || 10;
-          if (newAnalysis.roadmap) {
-             newAnalysis.roadmap = recalculateTimeline(
-                 newAnalysis.roadmap, 
-                 new Date().toISOString(), 
-                 pace
-             );
-          }
-
-          setAnalysis(newAnalysis);
-          setPendingPrefs(null);
-
-          if (userProfile?.id && userProfile.id !== "demo-user-id") {
-             console.log("💾 Saving to Database...");
-             await supabase.from('profiles').upsert({
-                 id: userProfile.id,
-                 email: userProfile.email,
-                 name: userProfile.name || "User",
-                 role: targetJob.role,       
-                 target_role: targetJob.role, 
-                 updated_at: new Date().toISOString()
-             });
-
-             await supabase.from('saved_roadmaps').upsert({
-                    user_id: userProfile.id,
-                    role_title: newAnalysis.role_name,
-                    match_score: newAnalysis.match_percentage,
-                    roadmap_data: newAnalysis,
-                    status: 'active',
-                    last_accessed_at: new Date().toISOString()
-                }, { onConflict: 'user_id,role_title' });
-             console.log("✅ Roadmap Saved Successfully!");
-          }
-
-          setLoadingText("");
-          setCurrentStep(AppStep.DASHBOARD);
+        let newAnalysis = res.data;
+  
+        const pace = prefs.hoursPerWeek || 10;
+        if (newAnalysis.roadmap) {
+          newAnalysis.roadmap = recalculateTimeline(
+            newAnalysis.roadmap,
+            new Date().toISOString(),
+            pace
+          );
+        }
+  
+        setAnalysis(newAnalysis);
+        setPendingPrefs(null);
+  
+        if (userProfile?.id && userProfile.id !== "demo-user-id") {
+          await supabase.from("profiles").upsert({
+            id: userProfile.id,
+            email: userProfile.email,
+            name: userProfile.name || "User",
+            role: targetJob.role,
+            target_role: targetJob.role,
+            updated_at: new Date().toISOString()
+          });
+  
+          await supabase.from("saved_roadmaps").upsert({
+            user_id: userProfile.id,
+            role_title: newAnalysis.role_name,
+            match_score: newAnalysis.match_percentage,
+            roadmap_data: newAnalysis,
+            status: "active",
+            last_accessed_at: new Date().toISOString()
+          }, { onConflict: "user_id,role_title" });
+        }
+  
+        setLoadingText("");
+        setCurrentStep(AppStep.DASHBOARD);
       }
     } catch (err: any) {
-      console.error(err);
+      console.error("Analyze request failed", err?.response?.data || err);
       setLoadingText("");
-      alert("Error generating roadmap.");
+    
+      const serverMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.detail ||
+        JSON.stringify(err?.response?.data?.errors || err?.response?.data || {}, null, 2);
+    
+      alert(serverMessage || "Error generating roadmap.");
     }
   };
 
   const updateRoadmapProgress = useCallback(async (updatedRoadmap: AnalysisResult) => {
-      // --- ACCOUNTABILITY: DYNAMIC ADJUSTMENT ---
-      // If a phase is completed, re-project future phases from TODAY
       const incompletePhases = updatedRoadmap.roadmap.filter(p => !p.is_completed);
       
       if (incompletePhases.length > 0) {
          const adjustedPhases = recalculateTimeline(
             incompletePhases, 
             new Date().toISOString(), 
-            10 // Default pace
+            10 
          );
 
          updatedRoadmap.roadmap = updatedRoadmap.roadmap.map(p => {
@@ -325,12 +303,11 @@ export const useCareerFlow = () => {
             .eq('user_id', userProfile.id)
             .eq('role_title', updatedRoadmap.role_name); 
       } catch (err) {
-        console.error("Save failed:", err);
+        console.error(err);
       }
   }, [userProfile]);
 
   const loadSavedRoadmap = (savedData: AnalysisResult) => {
-      // Manual Load -> Clear Exit Flag to allow persistence next time
       sessionStorage.removeItem("manualExit");
       
       setAnalysis(savedData);
@@ -395,16 +372,13 @@ export const useCareerFlow = () => {
     }
   };
 
-  // --- SAFE EXIT ---
   const handleExit = () => {
-      // 1. Clear View State
       setAnalysis(null);
       setTargetJob(null);
       setDynamicSkills([]);
       setUserSkills({});
       setCurrentStep(AppStep.LANDING);
       
-      // 2. Set Flag to prevent auto-bounceback on refresh/nav
       sessionStorage.setItem("manualExit", "true");
   };
 

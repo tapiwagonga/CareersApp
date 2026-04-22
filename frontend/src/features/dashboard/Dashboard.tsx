@@ -1,7 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import ReactNiceAvatar, { genConfig } from "react-nice-avatar";
-import { createPortal } from "react-dom";
 import {
   Play,
   BookOpen,
@@ -15,37 +13,26 @@ import {
   Calendar,
   Trophy,
   Lock,
-  MapPin,
   Check,
   Star,
-  Flame,
-  TrendingUp,
-  AlertCircle,
-  Sparkles,
-  Image as ImageIcon,
-  Maximize2,
-  Flag,
-  Timer,
+  ExternalLink,
+  FileText,
   Home,
-  Terminal,
-  Github,
-  Loader2,
   Menu,
   X,
   Briefcase,
   UserCheck,
-  ExternalLink,
-  FileText
+  Link as LinkIcon,
+  PenTool,
+  Flame,
+  Activity,
+  Code
 } from "lucide-react";
 
 import { AnalysisResult, RoadmapTask, RoadmapPhase } from "../../types";
 import { ResourcePlayer } from "./ResourcePlayer";
 import { roadmapService } from "../../services/roadmapService";
-import { Mermaid } from "../../components/Mermaid";
 import { SkillQuiz } from "./SkillQuiz";
-import { api, endpoints } from "../../services/api";
-import { getPhaseStatus } from "../../utils/timeline";
-import { RoadmapSearch } from "./RoadmapSearch";
 
 type ResumeMeta = {
   roadmapId?: string;
@@ -59,14 +46,11 @@ type DocPreviewState = {
   url: string;
   title: string;
   provider?: string;
-  reason?: "raw" | "replaced_search" | "search" | "missing";
-  altUrl?: string;
+  iframeSafe: boolean;
 };
 
 const safeArray = <T,>(v: any): T[] => (Array.isArray(v) ? v : []);
-
 const normaliseTaskType = (t: any) => (t?.type ?? "doc").toString().trim().toLowerCase();
-
 const isTaskDone = (t: any) => t?.status === "Completed" || t?.status === "Done" || Boolean(t?.is_completed);
 
 const makeTaskKey = (t: any, idx: number) => {
@@ -81,498 +65,121 @@ const formatUKShort = (iso?: string) => {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 };
 
 const TYPE_ICONS: Record<string, any> = {
-  video: Play,
-  audio: Mic,
-  article: BookOpen,
-  doc: FileText,
-  documentation: FileText,
-  deep_dive: FileText,
-  interactive: Layout,
-  course: Layout,
-  project: Zap,
-  boss_battle: ShieldAlert,
-  watch: Play,
-  read: BookOpen,
-  build: Zap,
-  practice: CheckCircle2
+  video: Play, audio: Mic, article: BookOpen, doc: FileText,
+  documentation: FileText, deep_dive: FileText, interactive: Layout,
+  course: Layout, project: Zap, boss_battle: ShieldAlert, watch: Play,
+  read: BookOpen, build: Zap, book: BookOpen
 };
 
-
-const TYPE_COLORS: Record<string, string> = {
-  video: "bg-red-50 text-red-600 border-red-200",
-  audio: "bg-purple-50 text-purple-600 border-purple-200",
-  article: "bg-blue-50 text-blue-600 border-blue-200",
-  doc: "bg-cyan-50 text-cyan-600 border-cyan-200",
-  documentation: "bg-cyan-50 text-cyan-600 border-cyan-200",
-  deep_dive: "bg-indigo-50 text-indigo-600 border-indigo-200",
-  interactive: "bg-violet-50 text-violet-700 border-violet-200",
-  course: "bg-orange-50 text-orange-600 border-orange-200",
-  project: "bg-emerald-50 text-emerald-600 border-emerald-200",
-  boss_battle: "bg-gray-900 text-yellow-400 border-yellow-500",
-  watch: "bg-red-50 text-red-600 border-red-200",
-  read: "bg-blue-50 text-blue-600 border-blue-200",
-  build: "bg-emerald-50 text-emerald-600 border-emerald-200"
-};
-
-
-const isSearchUrl = (url?: string) => {
-  if (!url) return false;
-  const u = url.toLowerCase();
-  if (u.includes("google.com/search")) return true;
-  if (u.includes("bing.com/search")) return true;
-  if (u.includes("duckduckgo.com")) return true;
-  if (u.includes("/search?")) return true;
-  return false;
-};
-
-const guessOfficialDocUrl = (task: RoadmapTask, phase?: RoadmapPhase) => {
-  const t = `${task?.title ?? ""} ${(phase as any)?.focus_area ?? ""}`.toLowerCase();
-
-  if (t.includes("react")) return "https://react.dev/learn";
-  if (t.includes("typescript")) return "https://www.typescriptlang.org/docs/";
-  if (t.includes("javascript")) return "https://developer.mozilla.org/en-US/docs/Web/JavaScript";
-  if (t.includes("css")) return "https://developer.mozilla.org/en-US/docs/Web/CSS";
-  if (t.includes("html")) return "https://developer.mozilla.org/en-US/docs/Web/HTML";
-  if (t.includes("figma")) return "https://help.figma.com/hc/en-us";
-  if (t.includes("design system")) return "https://m3.material.io/";
-  if (t.includes("interaction design")) return "https://www.nngroup.com/topic/interaction-design/";
-  if (t.includes("prototyp")) return "https://www.nngroup.com/topic/prototyping/";
-  return null;
+const TYPE_COLOURS: Record<string, string> = {
+  video: "bg-rose-50 text-rose-600 border-rose-100",
+  audio: "bg-fuchsia-50 text-fuchsia-600 border-fuchsia-100",
+  article: "bg-sky-50 text-sky-600 border-sky-100",
+  doc: "bg-cyan-50 text-cyan-600 border-cyan-100",
+  documentation: "bg-cyan-50 text-cyan-600 border-cyan-100",
+  deep_dive: "bg-indigo-50 text-indigo-600 border-indigo-100",
+  interactive: "bg-violet-50 text-violet-700 border-violet-100",
+  course: "bg-orange-50 text-orange-600 border-orange-100",
+  project: "bg-emerald-50 text-emerald-600 border-emerald-100",
+  boss_battle: "bg-slate-900 text-amber-400 border-amber-500",
+  book: "bg-amber-50 text-amber-600 border-amber-100"
 };
 
 const isInAppDocType = (type: string) => {
   const t = (type || "").toLowerCase().trim();
+  return ["doc", "documentation", "article", "deep_dive", "interactive", "read", "book"].includes(t);
+};
+
+const InlineDocViewer = ({ state, onClose }: { state: DocPreviewState | null; onClose: () => void }) => {
+  if (!state) return null;
+
   return (
-    t === "doc" ||
-    t === "documentation" ||
-    t === "article" ||
-    t === "deep_dive" ||
-    t === "interactive" ||
-    t === "read"
-  );
-};
-
-
-const DocPreviewModal = ({ state, onClose }: { state: DocPreviewState | null; onClose: () => void }) => {
-  const open = Boolean(state?.url);
-
-  const [mounted, setMounted] = useState(false);
-  const [iframeLikelyBlocked, setIframeLikelyBlocked] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    setIframeLikelyBlocked(false);
-  }, [state?.url]);
-
-  const headerHint = useMemo(() => {
-    if (!state) return "";
-    if (state.reason === "replaced_search") return "Official source";
-    if (state.reason === "search") return "Search results";
-    if (state.reason === "missing") return "Fallback";
-    return "";
-  }, [state]);
-
-  if (!mounted) return null;
-
-  return createPortal(
-    <AnimatePresence>
-      {open && state && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[9999]"
-        >
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-
-          <motion.div
-            initial={{ opacity: 0, y: 18, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 18, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 260, damping: 24 }}
-            className="absolute left-1/2 top-1/2 w-[96vw] h-[92vh] max-w-6xl -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-200 flex flex-col"
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-white">
-              <div className="min-w-0">
-                <div className="text-sm font-black text-gray-900 truncate">{state.title}</div>
-                <div className="text-[10px] text-gray-500 font-medium uppercase tracking-widest truncate">
-                  {(state.provider || "Web").toString()}
-                  {headerHint ? " " + headerHint : ""}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                {state.altUrl ? (
-                  <a
-                    href={state.altUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-800 text-xs font-bold"
-                  >
-                    <ExternalLink size={14} /> Search
-                  </a>
-                ) : null}
-
-                <a
-                  href={state.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-800 text-xs font-bold"
-                >
-                  <ExternalLink size={14} /> Open in new tab
-                </a>
-
-                <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-700">
-                  <X size={18} />
-                </button>
-              </div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      className="flex flex-col h-full bg-white shadow-sm border border-slate-200 m-4 md:m-8 rounded-3xl overflow-hidden z-20"
+    >
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
+        <div className="flex items-center gap-4">
+          <button type="button" onClick={onClose} className="p-2 bg-white rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors flex items-center justify-center">
+            <ChevronRight className="rotate-180" size={18} />
+          </button>
+          <div>
+            <div className="text-sm font-black text-slate-900 tracking-tight">{state.title}</div>
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
+              {state.provider || "External Resource"}
             </div>
-
-            <div className="relative flex-1 bg-gray-50">
-              <iframe
-                ref={iframeRef}
-                title={state.title}
-                src={state.url}
-                className="w-full h-full"
-                onLoad={() => {
-                  const el = iframeRef.current;
-                  if (!el) return;
-
-                  try {
-                    const href = el.contentWindow?.location?.href || "";
-                    if (href === "about:blank") setIframeLikelyBlocked(true);
-                  } catch {
-                    setIframeLikelyBlocked(false);
-                  }
-
-                  window.setTimeout(() => {
-                    if (!el) return;
-                    try {
-                      const href2 = el.contentWindow?.location?.href || "";
-                      if (href2 === "about:blank") setIframeLikelyBlocked(true);
-                    } catch {
-                      setIframeLikelyBlocked(false);
-                    }
-                  }, 600);
-                }}
-              />
-
-              {iframeLikelyBlocked ? (
-                <div className="absolute inset-0 flex items-center justify-center p-6">
-                  <div className="bg-white border border-gray-200 rounded-2xl shadow-xl p-6 max-w-xl w-full text-center">
-                    <div className="mx-auto w-12 h-12 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-100 mb-3">
-                      <AlertCircle size={20} />
-                    </div>
-                    <div className="font-black text-gray-900 mb-1">This site blocks in app preview</div>
-                    <div className="text-sm text-gray-600 mb-5">
-                      Many official docs disable iframe embedding. Open it in a new tab for the full page.
-                    </div>
-                    <a
-                      href={state.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-black text-white text-sm font-bold"
-                    >
-                      <ExternalLink size={16} /> Open in new tab
-                    </a>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>,
-    document.body
-  );
-};
-
-
-const resolveDocUrl = (task: RoadmapTask, phase?: RoadmapPhase): DocPreviewState => {
-  const raw = ((task as any)?.meta?.url || "").toString().trim();
-  const provider = ((task as any)?.meta?.provider || (task as any)?.meta?.platform || "").toString();
-
-  if (!raw) {
-    const fallback = guessOfficialDocUrl(task, phase);
-    if (fallback) return { url: fallback, title: task.title || "Document", provider, reason: "missing" };
-    return { url: "about:blank", title: task.title || "Document", provider, reason: "missing" };
-  }
-
-  if (isSearchUrl(raw)) {
-    const official = guessOfficialDocUrl(task, phase);
-    if (official) {
-      return { url: official, altUrl: raw, title: task.title || "Document", provider, reason: "replaced_search" };
-    }
-    return { url: raw, title: task.title || "Document", provider, reason: "search" };
-  }
-
-  return { url: raw, title: task.title || "Document", provider, reason: "raw" };
-};
-
-const VisualAid = ({ query }: { query: string }) => {
-  return (
-    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="my-6 group">
-      <div className="bg-[#0F172A] rounded-xl overflow-hidden border border-indigo-500/30 shadow-xl relative">
-        <div
-          className="absolute inset-0 opacity-20"
-          style={{
-            backgroundImage:
-              "linear-gradient(#4f46e5 1px, transparent 1px), linear-gradient(90deg, #4f46e5 1px, transparent 1px)",
-            backgroundSize: "20px 20px"
-          }}
-        />
-        <div className="relative z-10 p-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-indigo-500/20 rounded-lg flex items-center justify-center border border-indigo-500/50 text-indigo-300">
-              <ImageIcon size={24} />
-            </div>
-            <div>
-              <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">Instructional Diagram</div>
-              <div className="text-white font-bold text-lg leading-tight">{query}</div>
-            </div>
-          </div>
-          <div className="bg-white/10 p-2 rounded-full hover:bg-white/20 transition-colors text-white">
-            <Maximize2 size={18} />
           </div>
         </div>
-        <div className="h-1 w-full bg-gradient-to-r from-indigo-500 to-purple-500 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-500" />
+        <a
+          href={state.url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-sm"
+        >
+          <ExternalLink size={14} /> Open in Browser
+        </a>
+      </div>
+
+      <div className="relative flex-1 bg-slate-100 w-full flex items-center justify-center">
+        {!state.iframeSafe ? (
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-sm p-10 max-w-md w-full text-center mx-4">
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-6">
+              <ShieldAlert size={28} strokeWidth={2} />
+            </div>
+            <div className="font-black text-2xl text-slate-900 mb-3 tracking-tight">External Viewing Required</div>
+            <div className="text-sm text-slate-500 mb-8 leading-relaxed font-medium">
+              This publisher restricts direct embedding to protect your security. Please open the resource securely in a new browser tab.
+            </div>
+            <a
+              href={state.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 w-full px-6 py-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-black transition-all shadow-md"
+            >
+              <ExternalLink size={18} /> Access Material
+            </a>
+          </div>
+        ) : (
+          <iframe title={state.title} src={state.url} className="w-full h-full border-0 bg-white" />
+        )}
       </div>
     </motion.div>
   );
 };
 
-const CelebrationOverlay = ({ show }: { show: boolean }) => (
-  <AnimatePresence>
-    {show && (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.5, y: 50 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 1.1, y: -20 }}
-        className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] pointer-events-none"
-      >
-        <div className="bg-black text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 border border-gray-800">
-          <div className="bg-yellow-400 text-black p-1.5 rounded-full">
-            <Sparkles size={18} fill="currentColor" />
-          </div>
-          <div>
-            <h3 className="font-bold text-sm">XP Gained!</h3>
-            <p className="text-[10px] text-gray-400 font-mono uppercase tracking-widest">Progress Saved</p>
-          </div>
-        </div>
-      </motion.div>
-    )}
-  </AnimatePresence>
-);
-
-const VelocityWidget = ({ createdAt, progress, totalWeeks }: { createdAt: string; progress: number; totalWeeks: number }) => {
-  const start = new Date(createdAt);
-  const now = new Date();
-  const daysElapsed = Math.max(1, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-  const totalDaysEst = Math.max(7, totalWeeks * 7);
-  const expectedProgress = Math.min(100, (daysElapsed / totalDaysEst) * 100);
-  const diff = progress - expectedProgress;
-
-  let status: any = {
-    label: "On Track",
-    color: "text-emerald-600",
-    bg: "bg-emerald-50",
-    border: "border-emerald-100",
-    icon: TrendingUp
-  };
-
-  if (diff > 5) {
-    status = {
-      label: "Ahead of Schedule",
-      color: "text-amber-500",
-      bg: "bg-amber-50",
-      border: "border-amber-100",
-      icon: Flame
-    };
-  } else if (diff < -10) {
-    status = {
-      label: "Falling Behind",
-      color: "text-rose-500",
-      bg: "bg-rose-50",
-      border: "border-rose-100",
-      icon: AlertCircle
-    };
-  }
-
-  return (
-    <div className={`p-4 rounded-xl border ${status.bg} ${status.border}`}>
-      <div className="flex items-center gap-3 mb-2">
-        <div className={`p-1.5 rounded-lg bg-white shadow-sm ${status.color}`}>
-          <status.icon size={16} />
-        </div>
-        <div className={`text-xs font-black uppercase tracking-widest ${status.color}`}>{status.label}</div>
-      </div>
-
-      <div className="flex justify-between items-end text-xs font-medium text-gray-500 mt-2">
-        <span>
-          Day {daysElapsed} of {totalDaysEst}
-        </span>
-        <span className={status.color}>
-          {diff > 0 ? "+" : ""}
-          {Math.round(diff)}% pace
-        </span>
-      </div>
-
-      <div className="relative h-1.5 bg-gray-200 rounded-full mt-2 overflow-hidden">
-        <div className="absolute top-0 left-0 h-full bg-gray-300 opacity-50" style={{ width: `${expectedProgress}%` }} />
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${progress}%` }}
-          className={`absolute top-0 left-0 h-full ${diff < -10 ? "bg-rose-500" : diff > 5 ? "bg-amber-400" : "bg-emerald-500"}`}
-        />
-      </div>
-    </div>
-  );
-};
-
-const RoadmapPath = ({
-  phases,
-  activePhaseId,
-  onPhaseSelect
-}: {
-  phases: RoadmapPhase[];
-  activePhaseId: number;
-  onPhaseSelect: (idx: number) => void;
-}) => {
-  const avatarConfig = useMemo(() => genConfig(), []);
-
-  return (
-    <div className="relative py-6 px-4">
-      <div className="absolute left-[34px] top-0 bottom-0 w-1 bg-gray-100 rounded-full" />
-      <div className="space-y-5 relative z-10">
-        {phases.map((phase, index) => {
-          const phaseNum = index + 1;
-          const isActive = phaseNum === activePhaseId;
-          const isPast = phaseNum < activePhaseId;
-          const isLocked = phaseNum > activePhaseId;
-
-          return (
-            <div key={(phase as any).week_number || index} className="relative pl-14 group">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isLocked) onPhaseSelect(phaseNum);
-                }}
-                disabled={isLocked}
-                className={`absolute left-5 -translate-x-1/2 w-9 h-9 rounded-full border-4 flex items-center justify-center transition-all duration-300 z-20 ${
-                  isActive ? "bg-black border-black scale-110 shadow-xl" : isPast ? "bg-green-500 border-green-500" : "bg-white border-gray-200"
-                }`}
-              >
-                {isPast ? (
-                  <Check className="text-white" size={16} strokeWidth={3} />
-                ) : isActive ? (
-                  <MapPin className="text-white" size={16} />
-                ) : isLocked ? (
-                  <Lock className="text-gray-300" size={14} />
-                ) : (
-                  <div className="w-2 h-2 bg-gray-300 rounded-full" />
-                )}
-              </button>
-
-              {isActive && (
-                <motion.div
-                  layoutId="avatar-walker"
-                  className="absolute left-5 -translate-x-1/2 -top-11 z-30 filter drop-shadow-md"
-                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                >
-                  <div className="w-11 h-11 rounded-full border-2 border-white bg-white overflow-hidden">
-                    <ReactNiceAvatar style={{ width: "100%", height: "100%" }} {...avatarConfig} />
-                  </div>
-                </motion.div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isLocked) onPhaseSelect(phaseNum);
-                }}
-                disabled={isLocked}
-                className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 ${
-                  isActive
-                    ? "bg-white border-black shadow-md translate-x-1"
-                    : isLocked
-                      ? "bg-transparent border-transparent opacity-50 cursor-not-allowed"
-                      : "bg-white border-gray-100 hover:border-gray-200"
-                }`}
-              >
-                <div className="flex justify-between items-center mb-1">
-                  <span
-                    className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
-                      isActive ? "bg-black text-white" : "bg-gray-100 text-gray-500"
-                    }`}
-                  >
-                    {(phase as any).label?.split(" ")[0] || `Phase ${phaseNum}`}
-                  </span>
-                  {isPast && <Star size={12} className="text-yellow-400 fill-yellow-400" />}
-                </div>
-                <h3 className={`font-bold text-sm leading-tight ${isActive ? "text-gray-900" : "text-gray-500"}`}>{(phase as any).focus_area}</h3>
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-const BossBattleCard = ({
+const TaskCard = ({
   task,
   isCompleted,
+  onOpen,
   onToggle
 }: {
   task: RoadmapTask;
   isCompleted: boolean;
-  onToggle: (rating?: number, metaPatch?: Record<string, any>) => void;
+  onOpen: () => void;
+  onToggle: (rating?: number) => void;
 }) => {
-  const [link, setLink] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [rating, setRating] = useState<number>(0);
+  const [projectLink, setProjectLink] = useState("");
+  const type = normaliseTaskType(task);
+  const isProject = type === "boss_battle" || type === "project";
+  
+  const Icon = TYPE_ICONS[type] || FileText;
+  const colourClass = TYPE_COLOURS[type] || "bg-slate-50 text-slate-600 border-slate-200";
+  const meta = (task as any).meta || {};
 
-  const parts = (task.description || "").split(/Requirements:|Objectives:/i);
-  const brief = parts[0] || "";
-  const requirements = parts[1] ? parts[1].split(/[-•]\s/).filter(s => s.trim().length > 0) : [];
-
-  const handleSubmit = async (e: React.MouseEvent) => {
+  const handleComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!link.trim()) return;
-
-    setSubmitting(true);
-
-    try {
-      const payload = {
-        task_title: task.title,
-        requirements: requirements.join(". "),
-        user_input: link
-      };
-
-      const { data } = await api.post(endpoints.gradeProject, payload);
-
-      if (data?.passed) {
-        alert(`✅ Passed! Feedback: ${data.feedback ?? ""}`);
-        onToggle(undefined, { submission_link: link, grader_feedback: data.feedback, passed: true });
-      } else {
-        alert(`❌ Submission Rejected. Feedback: ${data?.feedback ?? "No feedback returned"}`);
-        onToggle(undefined, { submission_link: link, grader_feedback: data?.feedback, passed: false });
-      }
-    } catch (err) {
-      console.error("Grading failed, falling back to simulation", err);
-      await new Promise(r => setTimeout(r, 1200));
-      onToggle(undefined, { submission_link: link, passed: true, grader_feedback: "Offline simulation pass" });
-    } finally {
-      setSubmitting(false);
+    if (isProject && !isCompleted && !projectLink.trim()) {
+      alert("Please submit a link to your project repository.");
+      return;
     }
+    onToggle(rating > 0 ? rating : undefined);
   };
 
   return (
@@ -580,213 +187,89 @@ const BossBattleCard = ({
       layout
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`group relative w-full rounded-2xl border-2 transition-all overflow-hidden ${
-        isCompleted ? "bg-gray-900 border-gray-800 opacity-70" : "bg-[#0F172A] border-indigo-500/30 shadow-lg hover:border-indigo-500/50"
+      className={`group relative w-full p-6 rounded-3xl border transition-all duration-300 ${
+        isCompleted ? "bg-slate-50 border-slate-200" : "bg-white border-slate-200 hover:border-indigo-300 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer"
       }`}
-      onClick={() => setExpanded(v => !v)}
+      onClick={!isCompleted && !isProject ? onOpen : undefined}
     >
-      <div className="h-8 bg-black/40 border-b border-white/5 flex items-center justify-between px-4">
-        <div className="flex gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
-          <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
-          <div className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
-        </div>
-        <div className="flex items-center gap-2 text-[10px] font-mono text-indigo-400 opacity-70">
-          <Terminal size={10} />
-          <span>mission_brief.md</span>
-        </div>
-        <div />
-      </div>
-
-      <div className="p-6 md:p-8">
-        <div className="flex justify-between items-start mb-6">
-          <div className="flex items-center gap-4">
-            <div
-              className={`p-3 rounded-xl border ${
-                isCompleted ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-indigo-500/10 border-indigo-500/20 text-indigo-400"
-              }`}
-            >
-              {isCompleted ? <CheckCircle2 size={24} /> : <ShieldAlert size={24} />}
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h4 className="text-xl font-bold text-white tracking-tight">{(task.title || "").replace(/Build:|Project:/i, "").trim()}</h4>
-                {isCompleted && (
-                  <span className="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded border border-green-500/20 uppercase tracking-wider font-bold">
-                    Solved
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3 text-xs font-mono text-gray-500">
-                <span className="flex items-center gap-1">
-                  <Zap size={12} className="text-yellow-500" /> {task.xp_reward || 100} XP
-                </span>
-                <span className="flex items-center gap-1">
-                  <Clock size={12} /> {task.estimated_minutes || 60}m est
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <button type="button" className={`p-2 rounded-full hover:bg-white/5 transition-colors text-gray-500 ${expanded ? "rotate-90" : ""}`}>
-            <ChevronRight size={20} />
-          </button>
+      <div className="flex flex-col md:flex-row gap-5 items-start relative z-10">
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${colourClass}`}>
+          <Icon size={20} strokeWidth={2} />
         </div>
 
-        <div className="space-y-6">
-          <div>
-            <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-2">Directive</div>
-            <p className="text-gray-300 text-sm leading-relaxed">{brief}</p>
-          </div>
-
-          <AnimatePresence>
-            {expanded && requirements.length > 0 && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                <div className="pt-4 border-t border-white/5">
-                  <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-3">Acceptance Criteria</div>
-                  <div className="grid gap-2">
-                    {requirements.map((req, i) => (
-                      <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-black/20 border border-white/5 text-sm text-gray-400 font-mono">
-                        <span className="text-indigo-500 mt-0.5">0{i + 1}.</span>
-                        {req.trim()}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </motion.div>
+        <div className="flex-1 min-w-0 w-full">
+          <div className="flex justify-between items-start mb-2 gap-4">
+            <h4 className={`font-black text-lg tracking-tight leading-tight ${isCompleted ? "text-slate-500 line-through" : "text-slate-900"}`}>
+              {task.title}
+            </h4>
+            {meta.quality_score && !isCompleted && (
+              <span className="flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded-md text-[9px] font-black tracking-widest shrink-0">
+                <Star size={10} fill="currentColor" /> {meta.quality_score} SCORE
+              </span>
             )}
-          </AnimatePresence>
+          </div>
 
-          {!isCompleted && (
-            <div onClick={e => e.stopPropagation()} className="mt-6 pt-6 border-t border-white/10">
-              <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">Submit Solution</label>
-              <div className="flex gap-2">
-                <div className="flex-1 relative group">
-                  <Github className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-white transition-colors" size={16} />
-                  <input
-                    type="text"
-                    placeholder="Paste your GitHub repository or Replit link..."
-                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-gray-600 font-mono"
-                    value={link}
-                    onChange={e => setLink(e.target.value)}
-                    disabled={submitting}
-                  />
-                </div>
-                <button
-                  type="button"
-                  disabled={!link || submitting}
-                  onClick={handleSubmit}
-                  className="px-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-indigo-900/20"
-                >
-                  {submitting ? <Loader2 className="animate-spin" size={18} /> : "Submit"}
-                </button>
+          <p className="text-sm text-slate-500 mb-4 leading-relaxed font-medium line-clamp-2">
+            {task.description}
+          </p>
+
+          {!isCompleted && isProject && (
+            <div className="mb-4 flex gap-3" onClick={e => e.stopPropagation()}>
+              <div className="relative flex-1">
+                <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  type="url"
+                  placeholder="Paste GitHub or project link here..."
+                  value={projectLink}
+                  onChange={e => setProjectLink(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                />
               </div>
             </div>
           )}
 
-          <div className="pt-4 border-t border-white/10">
-            <button
-              type="button"
-              onClick={e => {
-                e.stopPropagation();
-                onToggle(undefined, { submission_link: link || undefined });
-              }}
-              className="w-full py-3 rounded-xl font-bold text-sm bg-white/10 hover:bg-white/15 text-white border border-white/10 transition-colors"
-            >
-              {isCompleted ? "Mark as Not Done" : "Mark as Done"}
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-4 mt-auto">
+            <div className="flex items-center gap-4 text-xs font-bold text-slate-400 uppercase tracking-widest">
+              <span className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-lg text-slate-600">
+                <Clock size={12} /> {task.estimated_minutes || 30} MIN
+              </span>
+              <span className="hidden sm:block truncate max-w-[150px]">
+                {meta.provider || "Curated"}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-4">
+              {!isCompleted && !isProject && (
+                <button type="button" className="text-indigo-600 font-black text-sm hover:text-indigo-800 transition-colors flex items-center gap-2">
+                  {isInAppDocType(type) ? "Read Material" : "Watch Video"} <ChevronRight size={16} />
+                </button>
+              )}
+
+              {isCompleted ? (
+                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <button
+                      key={star}
+                      onClick={() => setRating(star)}
+                      className={`p-1 transition-colors ${rating >= star ? "text-amber-400" : "text-slate-200 hover:text-amber-200"}`}
+                    >
+                      <Star size={16} fill={rating >= star ? "currentColor" : "none"} />
+                    </button>
+                  ))}
+                  <span className="text-[9px] font-bold text-slate-400 uppercase ml-2 tracking-widest">Rate It</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleComplete}
+                  className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors shadow-md"
+                >
+                  <CheckCircle2 size={14} /> Mark Done
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </motion.div>
-  );
-};
-
-const MissionCard = ({
-    task,
-    isCompleted,
-    onOpen,
-    onToggle
-  }: {
-    task: RoadmapTask;
-    isCompleted: boolean;
-    onOpen: () => void;
-    onToggle: () => void;
-}) => {
-  const type = normaliseTaskType(task);
-  const isProject = type === "boss_battle" || type === "project" || type === "Build";
-
-  if (isProject) {
-    return (
-      <BossBattleCard
-        task={task}
-        isCompleted={isCompleted}
-        onToggle={(rating?: number, metaPatch?: Record<string, any>) => {
-          onToggle();
-          void rating;
-          void metaPatch;
-        }}
-      />
-    );
-  }
-
-  const Icon = TYPE_ICONS[type] || TYPE_ICONS.doc;
-  const colorClass = TYPE_COLORS[type] || TYPE_COLORS.doc;
-
-  const actionLabel = isInAppDocType(type) ? "Read" : "Open";
-  const ActionIcon = isInAppDocType(type) ? BookOpen : Play;
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`group relative w-full p-5 rounded-2xl border-2 transition-all cursor-pointer overflow-hidden ${
-        isCompleted ? "bg-gray-50 border-gray-100 opacity-70 grayscale" : "bg-white border-gray-100 hover:border-black hover:shadow-lg"
-      }`}
-      onClick={onOpen}
-      data-task-card
-    >
-      <div className="flex gap-4 relative z-10">
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border ${colorClass}`}>
-          <Icon size={20} />
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex justify-between items-start">
-            <h4 className="font-bold text-gray-900 truncate pr-8">{task.title}</h4>
-            <span className="text-xs font-bold text-yellow-500 flex items-center gap-1 shrink-0">
-              <Zap size={10} fill="currentColor" /> +{(task as any)?.xp_reward || 50}
-            </span>
-          </div>
-
-          <p className="text-sm text-gray-500 line-clamp-2 mt-1 mb-3">{task.description}</p>
-
-          <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-gray-400">
-            <span className="flex items-center gap-1">
-              <Clock size={12} /> {(task as any)?.estimated_minutes || 30} min
-            </span>
-            {(task as any)?.meta?.platform && (
-              <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 border border-gray-200">{(task as any).meta.platform}</span>
-            )}
-            <span className="text-blue-600 font-bold flex items-center gap-1">
-              {actionLabel} <ActionIcon size={10} />
-            </span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-colors shrink-0 ${
-            isCompleted ? "bg-green-500 border-green-500" : "border-gray-200 group-hover:border-black"
-          }`}
-          onClick={e => {
-            e.stopPropagation();
-            onToggle();
-          }}
-        >
-          {isCompleted && <CheckCircle2 size={14} className="text-white" />}
-        </button>
       </div>
     </motion.div>
   );
@@ -805,54 +288,57 @@ interface DashboardProps {
 export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInterview, onUpdate }: DashboardProps) => {
   const [localData, setLocalData] = useState<AnalysisResult>(data);
   const [activePhaseIndex, setActivePhaseIndex] = useState(1);
-  const [showCelebration, setShowCelebration] = useState(false);
   const [activeResource, setActiveResource] = useState<RoadmapTask | null>(null);
   const [quizSkill, setQuizSkill] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [docPreview, setDocPreview] = useState<DocPreviewState | null>(null);
+  
+  const [isNotepadOpen, setIsNotepadOpen] = useState(false);
+  const [moduleNotes, setModuleNotes] = useState<Record<number, string>>({});
+  const [streakDays, setStreakDays] = useState(1);
 
   const resumeMeta = useMemo(() => ((data as any)?._resume as ResumeMeta | undefined) ?? undefined, [data]);
-
-  const lastOpenRef = useRef<{ phaseIndex: number; taskKey: string | null }>({ phaseIndex: 1, taskKey: null });
-  const saveTimerRef = useRef<number | null>(null);
-  const inFlightSaveRef = useRef<Promise<void> | null>(null);
+  const phases = useMemo(() => safeArray<RoadmapPhase>((localData as any)?.roadmap), [localData]);
+  const roleTitle = useMemo(() => ((localData as any)?.role_name || (resumeMeta?.roleTitle ?? "Role")).toString(), [localData, resumeMeta]);
+  const createdAtResolved = useMemo(() => createdAt || resumeMeta?.createdAt || new Date().toISOString(), [createdAt, resumeMeta]);
 
   useEffect(() => {
     if (data) setLocalData(data);
   }, [data]);
 
-  const phases = useMemo(() => safeArray<RoadmapPhase>((localData as any)?.roadmap), [localData]);
-
-  const roleTitle = useMemo(() => ((localData as any)?.role_name || (resumeMeta?.roleTitle ?? "Role")).toString(), [localData, resumeMeta]);
-
-  const createdAtResolved = useMemo(() => createdAt || resumeMeta?.createdAt || new Date().toISOString(), [createdAt, resumeMeta]);
-
-  useEffect(() => {
-    if (!resumeMeta) return;
-
-    const p = resumeMeta.phaseIndex && resumeMeta.phaseIndex > 0 ? resumeMeta.phaseIndex : 1;
-    const max = phases.length || 1;
-    const clamped = Math.min(max, Math.max(1, p));
-
-    setActivePhaseIndex(clamped);
-    lastOpenRef.current = { phaseIndex: clamped, taskKey: resumeMeta.taskKey ?? null };
-  }, [resumeMeta, phases.length]);
-
   const stats = useMemo(() => {
     let totalXP = 0;
     let currentXP = 0;
+    let totalRequiredHours = 0;
+    let completedHours = 0;
 
     phases.forEach(phase => {
       safeArray<RoadmapTask>((phase as any)?.tasks).forEach(t => {
         const xp = (t as any)?.xp_reward || 50;
+        const mins = (t as any)?.estimated_minutes || 30;
         totalXP += xp;
-        if (isTaskDone(t)) currentXP += xp;
+        totalRequiredHours += mins / 60;
+        if (isTaskDone(t)) {
+          currentXP += xp;
+          completedHours += mins / 60;
+        }
       });
     });
 
     const progress = totalXP > 0 ? Math.round((currentXP / totalXP) * 100) : 0;
-    return { totalXP, currentXP, progress };
-  }, [phases]);
+    
+    const startDate = new Date(createdAtResolved);
+    const today = new Date();
+    const daysElapsed = Math.max(1, Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    
+    const velocityHoursPerDay = completedHours > 0 ? completedHours / daysElapsed : 0;
+    const remainingHours = totalRequiredHours - completedHours;
+    
+    let projectedDaysRemaining = Math.ceil(remainingHours / (velocityHoursPerDay || 2)); 
+    if (projectedDaysRemaining > 365) projectedDaysRemaining = 365;
+
+    return { totalXP, currentXP, progress, velocityHoursPerDay, projectedDaysRemaining };
+  }, [phases, createdAtResolved]);
 
   const activePhase = useMemo(() => {
     const phase = phases[activePhaseIndex - 1];
@@ -860,540 +346,335 @@ export const Dashboard = ({ data, userId, createdAt, onReset, onExit, onStartInt
     return { ...(phase as any), tasks: safeArray<RoadmapTask>((phase as any).tasks) } as RoadmapPhase & { tasks: RoadmapTask[] };
   }, [phases, activePhaseIndex]);
 
-  const searchItems = useMemo(() => {
-    const allPhases = safeArray<any>((localData as any)?.roadmap);
+  const categorisedTasks = useMemo(() => {
+    const tasks = activePhase?.tasks || [];
+    return {
+      theory: tasks.filter(t => ["doc", "documentation", "article", "book", "deep_dive", "read"].includes(normaliseTaskType(t))),
+      media: tasks.filter(t => ["video", "audio", "watch"].includes(normaliseTaskType(t))),
+      practical: tasks.filter(t => ["interactive", "project", "boss_battle", "course", "build", "practice"].includes(normaliseTaskType(t)))
+    };
+  }, [activePhase]);
 
-    return allPhases.flatMap((phase: any, pIdx: number) => {
-      const label = phase?.label || phase?.focus_area || `Phase ${pIdx + 1}`;
-      const tasks = safeArray<any>(phase?.tasks);
+  const persistSave = useCallback(async (nextData: AnalysisResult, previousData: AnalysisResult) => {
+    if (onUpdate) onUpdate(nextData);
+    if (!userId) return;
+    
+    try {
+      await roadmapService.saveRoadmap(userId, roleTitle, nextData, { phaseIndex: activePhaseIndex });
+    } catch (error) {
+      console.error(error);
+      alert("Network error: Failed to save your progress. Reverting changes.");
+      setLocalData(previousData);
+      if (onUpdate) onUpdate(previousData);
+    }
+  }, [userId, roleTitle, activePhaseIndex, onUpdate]);
 
-      return tasks.map((t: any, tIdx: number) => ({
-        label,
-        phaseIndex: pIdx + 1,
-        taskKey: makeTaskKey(t, tIdx),
-        taskTitle: (t?.title || "").toString(),
-        taskType: (t?.type || "").toString(),
-        isDone: isTaskDone(t)
-      }));
+  const handleTaskToggleComplete = useCallback((phaseIdx: number, taskKey: string, rating?: number) => {
+    const previousData = JSON.parse(JSON.stringify(localData));
+    const next = JSON.parse(JSON.stringify(localData));
+    const phase = next.roadmap[phaseIdx];
+    
+    phase.tasks = phase.tasks.map((t: any, idx: number) => {
+      if (makeTaskKey(t, idx) !== taskKey) return t;
+      const done = isTaskDone(t);
+      t.status = done ? "Pending" : "Completed";
+      t.is_completed = !done;
+      if (rating && !done) t.meta = { ...t.meta, user_rating: rating };
+      return t;
     });
-  }, [localData]);
+    
+    setLocalData(next);
+    persistSave(next, previousData);
+  }, [localData, persistSave]);
 
-  const renderDescription = (text: string) => {
-    if (!text) return null;
-    const mermaidRegex = /```mermaid([\s\S]*?)```/g;
-    const parts = text.split(mermaidRegex);
+  const openTask = useCallback((phaseIdx: number, taskKey: string) => {
+    const phase = phases[phaseIdx];
+    const task = safeArray<any>((phase as any)?.tasks).find((t: any, idx: number) => makeTaskKey(t, idx) === taskKey);
+    if (!task) return;
 
-    return (
-      <div className="text-lg text-gray-500 max-w-2xl leading-relaxed space-y-4">
-        {parts.map((part, i) => {
-          if (i % 2 === 1) return <Mermaid key={i} chart={part.trim()} />;
+    const type = normaliseTaskType(task);
+    if (isInAppDocType(type)) {
+      const url = task.meta?.url || "about:blank";
+      setDocPreview({
+        url,
+        title: task.title || "Document",
+        provider: task.meta?.provider,
+        iframeSafe: task.meta?.iframe_safe !== false
+      });
+    } else {
+      setActiveResource(task as any);
+    }
+  }, [phases]);
+
+  const handleQuizPass = () => {
+    setQuizSkill(null);
+    setActivePhaseIndex(prev => Math.min(phases.length, prev + 1));
+    setStreakDays(prev => prev + 1);
+  };
+
+  const handleNoteChange = (text: string) => {
+    setModuleNotes(prev => ({ ...prev, [activePhaseIndex]: text }));
+  };
+
+  const SidebarContent = () => (
+    <div className="flex flex-col h-full bg-white border-r border-slate-200">
+      <div className="p-8 border-b border-slate-100 relative">
+        <div className="absolute top-8 right-8 flex items-center gap-1.5 bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg font-black text-xs border border-rose-100 shadow-sm">
+          <Flame size={14} fill="currentColor" /> {streakDays} Day Streak
+        </div>
+
+        <h2 className="text-2xl font-black text-slate-900 tracking-tight mb-1">Curriculum</h2>
+        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-8">{roleTitle}</p>
+
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 mb-4">
+          <div className="flex justify-between items-end mb-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Overall Progress</div>
+              <div className="text-3xl font-black text-indigo-600 leading-none">{stats.progress}%</div>
+            </div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              {stats.currentXP} XP
+            </div>
+          </div>
+          <div className="h-2 bg-slate-200 rounded-full overflow-hidden mb-3">
+            <motion.div initial={{ width: 0 }} animate={{ width: `${stats.progress}%` }} className="h-full bg-indigo-600" />
+          </div>
+          
+          <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest pt-3 border-t border-slate-200/60">
+            <Activity size={12} className="text-emerald-500" />
+            Velocity: {stats.velocityHoursPerDay.toFixed(1)} hrs/day
+          </div>
+        </div>
+
+        <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-start gap-3">
+          <Calendar size={18} className="text-indigo-600 mt-0.5 shrink-0" />
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-1">Projected Completion</div>
+            <div className="text-sm font-bold text-indigo-900 leading-snug">Based on current pace, you will finish in {stats.projectedDaysRemaining} days.</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-slate-50/50">
+        {phases.map((phase, index) => {
+          const phaseNum = index + 1;
+          const isActive = phaseNum === activePhaseIndex;
+          const isPast = phaseNum < activePhaseIndex;
+          const isLocked = phaseNum > activePhaseIndex;
 
           return (
-            <span key={i} className="whitespace-pre-wrap block">
-              {part.split(/(<visual_aid>.*?<\/visual_aid>)/g).map((subPart, j) => {
-                const match = subPart.match(/<visual_aid>(.*?)<\/visual_aid>/);
-                if (match) return <VisualAid key={`${i}-${j}`} query={match[1]} />;
-                return <span key={j}>{subPart}</span>;
-              })}
-            </span>
+            <button
+              key={index}
+              onClick={() => !isLocked && setActivePhaseIndex(phaseNum)}
+              disabled={isLocked}
+              className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center gap-4 ${
+                isActive ? "bg-white border-indigo-200 shadow-md" : isLocked ? "bg-transparent border-transparent opacity-50" : "bg-white border-slate-200 hover:border-slate-300"
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                isActive ? "bg-indigo-100 text-indigo-600" : isPast ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400"
+              }`}>
+                {isPast ? <Check size={14} strokeWidth={3} /> : isLocked ? <Lock size={12} /> : <span className="font-black text-xs">{phaseNum}</span>}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={`text-[10px] font-black uppercase tracking-widest ${isActive ? "text-indigo-600" : "text-slate-400"}`}>
+                  Module {phaseNum}
+                </div>
+                <div className={`font-bold text-sm truncate ${isActive ? "text-slate-900" : "text-slate-600"}`}>
+                  {(phase as any).focus_area}
+                </div>
+              </div>
+            </button>
           );
         })}
       </div>
-    );
-  };
 
-  const scheduleSave = useCallback(
-    (nextData: AnalysisResult, pointer?: { phaseIndex?: number; taskKey?: string | null }) => {
-      if (!userId) return;
-
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-
-      saveTimerRef.current = window.setTimeout(() => {
-        const doSave = async () => {
-          try {
-            await roadmapService.saveRoadmap(userId, roleTitle, nextData, {
-              phaseIndex: pointer?.phaseIndex ?? lastOpenRef.current.phaseIndex,
-              taskKey: pointer?.taskKey ?? lastOpenRef.current.taskKey
-            });
-          } catch (e) {
-            console.error("saveRoadmap failed", e);
-          }
-        };
-
-        inFlightSaveRef.current = doSave();
-      }, 400);
-    },
-    [userId, roleTitle]
-  );
-
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-    };
-  }, []);
-
-  const persistResumePointer = useCallback(
-    async (phaseIndex: number, taskKey: string | null) => {
-      lastOpenRef.current = { phaseIndex, taskKey };
-
-      if (!userId) return;
-      try {
-        await roadmapService.updateResume(userId, roleTitle, phaseIndex, taskKey);
-      } catch (e) {
-        console.error("updateResume failed", e);
-      }
-    },
-    [userId, roleTitle]
-  );
-
-  const patchTask = useCallback(
-    (phaseIdx: number, taskKey: string, updater: (task: any) => void) => {
-      setLocalData(prev => {
-        const next = (typeof structuredClone === "function" ? structuredClone(prev) : JSON.parse(JSON.stringify(prev))) as any;
-        const phase = next?.roadmap?.[phaseIdx];
-        const tasks = safeArray<any>(phase?.tasks);
-
-        let hit = false;
-
-        const updatedTasks = tasks.map((t: any, idx: number) => {
-          const key = makeTaskKey(t, idx);
-          if (key !== taskKey) return t;
-          const copy = { ...t };
-          updater(copy);
-          hit = true;
-          return copy;
-        });
-
-        if (!hit) return prev;
-
-        next.roadmap[phaseIdx] = { ...phase, tasks: updatedTasks };
-        if (onUpdate) onUpdate(next);
-        scheduleSave(next);
-        return next;
-      });
-    },
-    [onUpdate, scheduleSave]
-  );
-
-  const handleTaskToggleComplete = useCallback(
-    async (phaseIdx: number, taskKey: string, rating?: number, metaPatch?: Record<string, any>) => {
-      patchTask(phaseIdx, taskKey, (task: any) => {
-        const done = isTaskDone(task);
-
-        if (done) {
-          task.status = "Pending";
-          task.is_completed = false;
-          if (task.meta) {
-            const meta = { ...task.meta };
-            delete meta.user_rating;
-            task.meta = meta;
-          }
-        } else {
-          task.status = "Completed";
-          task.is_completed = true;
-
-          if (rating !== undefined && rating !== null) {
-            task.meta = { ...(task.meta || {}), user_rating: rating };
-          }
-
-          if (metaPatch && typeof metaPatch === "object") {
-            task.meta = { ...(task.meta || {}), ...metaPatch };
-          }
-
-          setShowCelebration(true);
-          window.setTimeout(() => setShowCelebration(false), 2500);
-        }
-      });
-    },
-    [patchTask]
-  );
-
-  const openTask = useCallback(
-    async (phaseIdx: number, taskKey: string) => {
-      const phase = phases[phaseIdx];
-      const tasks = safeArray<any>((phase as any)?.tasks);
-
-      const task = tasks.find((t: any, idx: number) => makeTaskKey(t, idx) === taskKey);
-      if (!task) return;
-
-      setActivePhaseIndex(phaseIdx + 1);
-
-      const type = normaliseTaskType(task);
-      if (isInAppDocType(type)) {
-        const state = resolveDocUrl(task as any, phase as any);
-        setDocPreview(state);
-        setActiveResource(null);
-      } else {
-        setActiveResource(task as any);
-        setDocPreview(null);
-      }
-      
-
-      await persistResumePointer(phaseIdx + 1, taskKey);
-      scheduleSave(localData, { phaseIndex: phaseIdx + 1, taskKey });
-    },
-    [phases, persistResumePointer, scheduleSave, localData]
-  );
-
-  const finishResource = useCallback(
-    (rating?: number) => {
-      if (!activePhase || !activeResource) {
-        setActiveResource(null);
-        return;
-      }
-
-      const phaseIdx = activePhaseIndex - 1;
-      const tasks = safeArray<any>((localData as any)?.roadmap?.[phaseIdx]?.tasks);
-
-      const taskIdx = tasks.findIndex((t: any, idx: number) => {
-        const k = makeTaskKey(t, idx);
-        const activeK = makeTaskKey(activeResource as any, 0);
-        return k === activeK || t?.id === (activeResource as any)?.id;
-      });
-
-      if (taskIdx >= 0) {
-        const k = makeTaskKey(tasks[taskIdx], taskIdx);
-        void handleTaskToggleComplete(phaseIdx, k, rating);
-        void persistResumePointer(activePhaseIndex, k);
-        scheduleSave(localData, { phaseIndex: activePhaseIndex, taskKey: k });
-      }
-
-      setActiveResource(null);
-    },
-    [activePhase, activeResource, activePhaseIndex, localData, handleTaskToggleComplete, persistResumePointer, scheduleSave]
-  );
-
-  const handleQuizPass = useCallback(() => {
-    setQuizSkill(null);
-    setShowCelebration(true);
-    window.setTimeout(() => setShowCelebration(false), 2500);
-
-    setActivePhaseIndex(prev => {
-      const max = phases.length;
-      const next = prev < max ? prev + 1 : prev;
-      void persistResumePointer(next, null);
-      scheduleSave(localData, { phaseIndex: next, taskKey: null });
-      return next;
-    });
-  }, [phases.length, persistResumePointer, scheduleSave, localData]);
-
-  const findNextIncomplete = useCallback(() => {
-    const startPhase = Math.max(1, lastOpenRef.current.phaseIndex || activePhaseIndex);
-    const startPhaseIdx = startPhase - 1;
-
-    for (let p = startPhaseIdx; p < phases.length; p += 1) {
-      const tasks = safeArray<any>((phases[p] as any)?.tasks);
-      if (!tasks.length) continue;
-
-      let startTaskIdx = 0;
-      if (p === startPhaseIdx && lastOpenRef.current.taskKey) {
-        const idx = tasks.findIndex((t: any, i: number) => makeTaskKey(t, i) === lastOpenRef.current.taskKey);
-        if (idx >= 0) startTaskIdx = idx;
-      }
-
-      for (let t = startTaskIdx; t < tasks.length; t += 1) {
-        if (!isTaskDone(tasks[t])) {
-          const key = makeTaskKey(tasks[t], t);
-          return { phaseIdx: p, taskKey: key };
-        }
-      }
-
-      for (let t = 0; t < startTaskIdx; t += 1) {
-        if (!isTaskDone(tasks[t])) {
-          const key = makeTaskKey(tasks[t], t);
-          return { phaseIdx: p, taskKey: key };
-        }
-      }
-    }
-
-    return null;
-  }, [phases, activePhaseIndex]);
-
-  const handleContinue = useCallback(() => {
-    const next = findNextIncomplete();
-    if (!next) return;
-    void openTask(next.phaseIdx, next.taskKey);
-  }, [findNextIncomplete, openTask]);
-
-  useEffect(() => {
-    if (!resumeMeta?.taskKey) return;
-
-    const phaseIdx = (resumeMeta.phaseIndex || 1) - 1;
-    if (phaseIdx < 0 || phaseIdx >= phases.length) return;
-
-    const tasks = safeArray<any>((phases[phaseIdx] as any)?.tasks);
-    const exists = tasks.some((t: any, i: number) => makeTaskKey(t, i) === resumeMeta.taskKey);
-
-    if (exists) {
-      void openTask(phaseIdx, resumeMeta.taskKey);
-    }
-  }, [resumeMeta, phases, openTask]);
-
-  const jumpToTask = useCallback(
-    async (phaseIndex: number, taskKey: string) => {
-      const phaseIdx = phaseIndex - 1;
-      await openTask(phaseIdx, taskKey);
-    },
-    [openTask]
-  );
-
-  const SidebarContent = () => (
-    <>
-      <div className="p-6 border-b border-gray-100 bg-white">
-        <h2 className="text-xl font-black text-gray-900 mb-1 tracking-tight">Your Journey</h2>
-        <p className="text-xs text-gray-500 font-medium uppercase tracking-widest truncate mb-6">{roleTitle}</p>
-
-        <button
-          type="button"
-          onClick={handleContinue}
-          className="w-full mb-5 bg-black text-white py-3.5 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
-        >
-          <Play size={14} /> Continue
+      <div className="p-6 border-t border-slate-100 bg-white">
+        <button onClick={onExit} className="w-full flex items-center justify-center gap-2 py-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest transition-all">
+          <Home size={16} /> Exit Learning
         </button>
-
-        <div className="mb-6 bg-black text-white p-4 rounded-xl shadow-lg relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10" />
-          <div className="flex justify-between items-end relative z-10">
-            <div>
-              <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">Level {1 + Math.floor(stats.currentXP / 1000)}</div>
-              <div className="font-mono text-2xl font-bold leading-none">{stats.currentXP} XP</div>
-            </div>
-            <div className="text-right">
-              <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">Progress</div>
-              <div className="text-sm font-bold text-green-400">{stats.progress}%</div>
-            </div>
-          </div>
-          <div className="mt-3 w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
-            <motion.div initial={{ width: 0 }} animate={{ width: `${stats.progress}%` }} className="h-full bg-green-400 transition-all duration-1000 ease-out" />
-          </div>
-        </div>
-
-        <VelocityWidget createdAt={createdAtResolved} progress={stats.progress} totalWeeks={phases.length} />
-
-        <div className="mt-4 flex items-center justify-between text-[10px] text-gray-400 font-medium px-1">
-          <span className="flex items-center gap-1">
-            <Flag size={10} /> Started {formatUKShort(createdAtResolved)}
-          </span>
-          <span>{phases.length} Modules</span>
-        </div>
       </div>
-
-      <div className="px-6 py-4 border-b border-gray-100 bg-white">
-        <div className="flex items-center justify-between">
-          <div className="text-[10px] font-black uppercase tracking-widest text-gray-500">Roadmap</div>
-          <div className="text-[10px] font-medium text-gray-400">
-            Phase {activePhaseIndex} of {phases.length}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar bg-gray-50/30">
-        <RoadmapPath
-          phases={phases as any}
-          activePhaseId={activePhaseIndex}
-          onPhaseSelect={idx => {
-            setActivePhaseIndex(idx);
-            setIsMobileMenuOpen(false);
-            void persistResumePointer(idx, null);
-            scheduleSave(localData, { phaseIndex: idx, taskKey: null });
-          }}
-        />
-      </div>
-
-      <div className="p-4 border-t border-gray-100 bg-white space-y-2">
-        <button
-          type="button"
-          onClick={onExit}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors"
-        >
-          <Home size={14} /> Back to Home
-        </button>
-        
-      </div>
-    </>
+    </div>
   );
 
   if (!activePhase) return null;
-
   const allTasksDone = activePhase.tasks.length > 0 && activePhase.tasks.every(t => isTaskDone(t));
 
   return (
-    <div className="flex h-[calc(100vh-80px)] bg-[#F8F9FB] font-sans overflow-hidden relative">
-      <CelebrationOverlay show={showCelebration} />
-
-      <DocPreviewModal
-        state={docPreview}
-        onClose={() => {
-          setDocPreview(null);
-        }}
-      />
-
-      <ResourcePlayer task={activeResource} onClose={() => setActiveResource(null)} onComplete={finishResource} />
+    <div className="flex h-[calc(100vh-80px)] bg-[#F8FAFC] font-sans overflow-hidden">
+      <ResourcePlayer task={activeResource} onClose={() => setActiveResource(null)} onComplete={rating => {
+        if (activeResource) {
+          const tasks = safeArray<any>((localData as any)?.roadmap?.[activePhaseIndex - 1]?.tasks);
+          const taskIdx = tasks.findIndex((t: any) => t.id === activeResource.id || t.title === activeResource.title);
+          if (taskIdx >= 0) handleTaskToggleComplete(activePhaseIndex - 1, makeTaskKey(activeResource, taskIdx), rating);
+        }
+        setActiveResource(null);
+      }} />
 
       <AnimatePresence>{quizSkill && <SkillQuiz skill={quizSkill} onClose={() => setQuizSkill(null)} onPass={handleQuizPass} />}</AnimatePresence>
 
-      <aside className="hidden md:flex w-[420px] h-full min-h-0 bg-white border-r border-gray-200 flex-col z-20 shadow-[6px_0_24px_rgba(0,0,0,0.03)] shrink-0">
+      <aside className="hidden md:flex w-96 h-full shrink-0 z-20">
         <SidebarContent />
       </aside>
 
       <AnimatePresence>
         {isMobileMenuOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm md:hidden"
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-            <motion.div
-              initial={{ x: "-100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "-100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-0 left-0 bottom-0 w-[85%] max-w-[320px] bg-white z-50 shadow-2xl overflow-y-auto flex flex-col md:hidden"
-            >
-              <div className="flex justify-between items-center p-6 border-b border-gray-100">
-                <h3 className="font-bold text-lg">Menu</h3>
-                <button type="button" onClick={() => setIsMobileMenuOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="flex-1 min-h-0 flex flex-col h-full">
-                <SidebarContent />
-              </div>
-            </motion.div>
-          </>
+          <motion.div initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }} className="fixed inset-y-0 left-0 w-80 bg-white z-50 shadow-2xl flex flex-col md:hidden">
+            <div className="flex justify-end p-4 border-b border-slate-100"><button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-slate-100 rounded-lg"><X size={20} /></button></div>
+            <SidebarContent />
+          </motion.div>
         )}
       </AnimatePresence>
 
-      <main className="flex-1 h-full overflow-y-auto bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:24px_24px] scroll-smooth">
-        <div className="max-w-4xl mx-auto p-6 md:p-12 pb-24">
-          <div className="mb-6">
-            <RoadmapSearch
-              items={searchItems}
-              onSelect={item => {
-                void jumpToTask(item.phaseIndex, item.taskKey);
-              }}
-            />
-          </div>
-
-          <motion.div key={(activePhase as any)?.label || activePhaseIndex} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-10">
-            <div className="flex items-center justify-between mb-6 md:hidden">
-              <span className="text-xs font-bold uppercase tracking-widest text-gray-400">
-                Phase {activePhaseIndex} of {phases.length}
-              </span>
-              <button type="button" onClick={() => setIsMobileMenuOpen(true)} className="p-2 bg-white rounded-lg border border-gray-200 shadow-sm text-gray-700">
-                <Menu size={20} />
-              </button>
+      <main className="flex-1 h-full overflow-y-auto relative scroll-smooth">
+        {docPreview ? (
+          <InlineDocViewer state={docPreview} onClose={() => setDocPreview(null)} />
+        ) : (
+          <div className="max-w-4xl mx-auto p-6 md:p-12 pb-32">
+            <div className="flex items-center justify-between mb-8 md:hidden">
+              <span className="text-[11px] font-black uppercase tracking-widest text-slate-500 bg-white px-3 py-1.5 rounded-lg border border-slate-200">Module {activePhaseIndex}</span>
+              <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 bg-white rounded-lg border border-slate-200"><Menu size={20} /></button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              <div className="px-3 py-1 bg-white border border-gray-200 rounded-full text-xs font-bold text-gray-600 shadow-sm flex items-center gap-2">
-                <Calendar size={12} />
-                {(activePhase as any).start_date ? formatUKShort((activePhase as any).start_date) : "Start"} to{" "}
-                {(activePhase as any).end_date ? formatUKShort((activePhase as any).end_date) : "End"}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-12 relative">
+              <div className="flex justify-between items-start mb-4">
+                <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">{(activePhase as any).focus_area}</h1>
+                <button 
+                  onClick={() => setIsNotepadOpen(true)}
+                  className="hidden md:flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md hover:bg-slate-800 transition-colors"
+                >
+                  <PenTool size={14} /> Developer Pad
+                </button>
               </div>
+              <p className="text-lg text-slate-600 font-medium leading-relaxed max-w-2xl">{(activePhase as any).description}</p>
+            </motion.div>
 
-              <div className="px-3 py-1 bg-gray-100 rounded-full text-xs font-bold text-gray-400 flex items-center gap-2">
-                <Timer size={12} /> Est {(activePhase as any).total_hours || 0} Hours
-              </div>
-
-              {(() => {
-                const status = getPhaseStatus((activePhase as any).end_date, (activePhase as any).is_completed);
-                return (
-                  <div
-                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2 border border-transparent ${status.bg} ${status.color} ${
-                      status.urgent ? "animate-pulse" : ""
-                    }`}
-                  >
-                    <AlertCircle size={12} /> {status.label}
+            <div className="space-y-12">
+              
+              {categorisedTasks.theory.length > 0 && (
+                <section>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
+                    <BookOpen size={16} className="text-indigo-500" /> Theory & Documentation
+                  </h3>
+                  <div className="space-y-4">
+                    {categorisedTasks.theory.map((task: any) => {
+                      const tIdx = activePhase.tasks.indexOf(task);
+                      const taskKey = makeTaskKey(task, tIdx);
+                      return <TaskCard key={taskKey} task={task} isCompleted={isTaskDone(task)} onOpen={() => openTask(activePhaseIndex - 1, taskKey)} onToggle={(rating) => handleTaskToggleComplete(activePhaseIndex - 1, taskKey, rating)} />;
+                    })}
                   </div>
-                );
-              })()}
+                </section>
+              )}
+
+              {categorisedTasks.media.length > 0 && (
+                <section>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2 pt-6 border-t border-slate-200">
+                    <Play size={16} className="text-rose-500" /> Media & Lectures
+                  </h3>
+                  <div className="space-y-4">
+                    {categorisedTasks.media.map((task: any) => {
+                      const tIdx = activePhase.tasks.indexOf(task);
+                      const taskKey = makeTaskKey(task, tIdx);
+                      return <TaskCard key={taskKey} task={task} isCompleted={isTaskDone(task)} onOpen={() => openTask(activePhaseIndex - 1, taskKey)} onToggle={(rating) => handleTaskToggleComplete(activePhaseIndex - 1, taskKey, rating)} />;
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {categorisedTasks.practical.length > 0 && (
+                <section>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2 pt-6 border-t border-slate-200">
+                    <Code size={16} className="text-emerald-500" /> Practical Application
+                  </h3>
+                  <div className="space-y-4">
+                    {categorisedTasks.practical.map((task: any) => {
+                      const tIdx = activePhase.tasks.indexOf(task);
+                      const taskKey = makeTaskKey(task, tIdx);
+                      return <TaskCard key={taskKey} task={task} isCompleted={isTaskDone(task)} onOpen={() => openTask(activePhaseIndex - 1, taskKey)} onToggle={(rating) => handleTaskToggleComplete(activePhaseIndex - 1, taskKey, rating)} />;
+                    })}
+                  </div>
+                </section>
+              )}
+
             </div>
 
-            <h1 className="text-4xl md:text-5xl font-black text-gray-900 mb-4 tracking-tight leading-tight">{(activePhase as any).focus_area}</h1>
-
-            {renderDescription(((activePhase as any).description || "").toString())}
-
-            <div className="mt-6">
-              <button
-                type="button"
-                onClick={handleContinue}
-                className="inline-flex items-center gap-2 bg-black text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg hover:bg-gray-800 transition-colors"
-              >
-                <Play size={14} /> Continue
-              </button>
-            </div>
-          </motion.div>
-
-          <div className="grid grid-cols-1 gap-4">
-            <AnimatePresence mode="popLayout">
-              {safeArray<any>(activePhase.tasks).map((task: any, tIdx: number) => {
-                const done = isTaskDone(task);
-                const taskKey = makeTaskKey(task, tIdx);
-                const phaseIdx = activePhaseIndex - 1;
-
-                return (
-                  <div key={taskKey} data-task-key={taskKey}>
-                    <MissionCard task={task} isCompleted={done} onOpen={() => void openTask(phaseIdx, taskKey)} onToggle={() => void handleTaskToggleComplete(phaseIdx, taskKey)} />
-                  </div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-
-          {allTasksDone && (
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="mt-12 bg-black text-white p-8 rounded-3xl text-center shadow-2xl relative overflow-hidden"
-            >
-              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-gray-900 to-black z-0" />
-              <div className="relative z-10">
+            {allTasksDone && (
+              <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mt-16 bg-white border border-slate-200 p-10 rounded-3xl text-center shadow-xl relative overflow-hidden">
                 {activePhaseIndex === phases.length ? (
                   <>
-                    <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-2xl flex items-center justify-center text-white mx-auto mb-4 shadow-lg shadow-amber-500/30">
-                      <Briefcase size={32} strokeWidth={2.5} />
-                    </div>
-                    <h3 className="text-3xl font-black mb-3">Roadmap Conquered.</h3>
-                    <p className="text-gray-400 mb-8 max-w-md mx-auto text-lg leading-relaxed">
-                      You have mastered the curriculum. There is only one thing left to do.
-                      <br />
-                      <span className="text-white font-bold">Prove your skills in the Bar Raiser Interview.</span>
-                    </p>
-                    <button
-                      type="button"
-                      onClick={onStartInterview}
-                      className="bg-white text-black px-10 py-4 rounded-2xl font-bold hover:scale-105 transition-all shadow-xl shadow-white/10 flex items-center gap-3 mx-auto text-lg"
-                    >
-                      <UserCheck size={24} /> Begin The Final Interview
+                    <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 mx-auto mb-6 relative z-10"><Briefcase size={32} /></div>
+                    <h3 className="text-3xl font-black mb-4 text-slate-900 tracking-tight relative z-10">Curriculum Conquered</h3>
+                    <p className="text-slate-500 mb-8 text-lg font-medium relative z-10">You have mastered the required skills. Prove your capability in the final technical screen.</p>
+                    <button onClick={onStartInterview} className="bg-indigo-600 text-white px-8 py-4 rounded-xl font-black hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 mx-auto shadow-md shadow-indigo-600/20 relative z-10">
+                      <UserCheck size={20} /> Begin The Bar Raiser
                     </button>
                   </>
                 ) : (
                   <>
-                    <div className="w-16 h-16 bg-yellow-400 rounded-2xl flex items-center justify-center text-black mx-auto mb-4 shadow-lg rotate-3">
-                      <Trophy size={32} strokeWidth={2.5} />
-                    </div>
-                    <h3 className="text-2xl font-bold mb-2">Phase Tasks Complete!</h3>
-                    <p className="text-gray-400 mb-6 max-w-md mx-auto">
-                      To unlock the next module, verify your knowledge of <span className="text-white font-bold">{(activePhase as any).focus_area}</span>.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setQuizSkill(((activePhase as any).focus_area || "").toString())}
-                      className="bg-white text-black px-8 py-4 rounded-xl font-bold hover:bg-gray-100 transition-all hover:scale-105 flex items-center gap-3 mx-auto shadow-xl"
-                    >
-                      <ShieldAlert size={20} /> Verify and Unlock Phase {activePhaseIndex + 1}
+                    <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 mx-auto mb-6 relative z-10"><Trophy size={32} /></div>
+                    <h3 className="text-2xl font-black mb-2 text-slate-900 relative z-10">Module Complete</h3>
+                    <p className="text-slate-500 mb-8 font-medium relative z-10">Verify your knowledge to unlock the next module.</p>
+                    <button onClick={() => setQuizSkill(((activePhase as any).focus_area || "").toString())} className="bg-slate-900 text-white px-8 py-4 rounded-xl font-black hover:bg-slate-800 transition-all flex items-center justify-center gap-3 mx-auto shadow-md relative z-10">
+                      <ShieldAlert size={18} /> Verify Knowledge
                     </button>
                   </>
                 )}
-              </div>
-            </motion.div>
-          )}
-        </div>
+              </motion.div>
+            )}
+          </div>
+        )}
       </main>
+
+      <AnimatePresence>
+        {isNotepadOpen && (
+          <motion.div 
+            initial={{ x: "100%", opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "100%", opacity: 0 }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className="fixed top-0 right-0 bottom-0 w-full sm:w-[450px] bg-slate-900 border-l border-slate-800 z-50 flex flex-col shadow-2xl"
+          >
+            <div className="flex items-center justify-between p-6 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-3 text-white">
+                <PenTool size={20} className="text-indigo-400" />
+                <h3 className="font-black text-lg tracking-tight">Developer Pad</h3>
+              </div>
+              <button onClick={() => setIsNotepadOpen(false)} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="px-6 py-4 bg-slate-800/50 border-b border-slate-800 shrink-0">
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Current Context</div>
+              <div className="text-sm font-bold text-indigo-300 truncate">{(activePhase as any).focus_area} Notes</div>
+            </div>
+
+            <div className="flex-1 p-6 relative">
+              <textarea
+                value={moduleNotes[activePhaseIndex] || ""}
+                onChange={(e) => handleNoteChange(e.target.value)}
+                placeholder="Write Markdown notes, paste code snippets, or make calculations here..."
+                className="w-full h-full bg-transparent text-slate-300 font-mono text-sm leading-relaxed focus:outline-none resize-none placeholder:text-slate-600"
+                spellCheck={false}
+              />
+            </div>
+            
+            <div className="p-6 border-t border-slate-800 shrink-0 text-right">
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                Notes auto-save locally per module
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <button
+        onClick={() => setIsNotepadOpen(true)}
+        className="md:hidden fixed bottom-6 right-6 p-4 bg-slate-900 text-white rounded-full shadow-2xl border border-slate-700 z-40"
+      >
+        <PenTool size={20} />
+      </button>
+
     </div>
   );
 };
